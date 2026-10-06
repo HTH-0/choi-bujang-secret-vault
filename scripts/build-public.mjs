@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { deploymentIdentity } from './deployment-identity.mjs';
 
@@ -14,8 +14,14 @@ if (!Array.isArray(data.notes)) {
   throw new Error('실습용 공개 자료 형식을 확인하세요. 실제 학생 자료를 넣으면 안 됩니다.');
 }
 await mkdir(resolve(root, 'public'), { recursive: true });
-await copyFile(source, output);
-console.log('실습용 공개 자료를 public/data.json에 복사했습니다.');
+if (config.step === 1) {
+  await copyFile(source, output);
+  console.log('실습용 공개 자료를 public/data.json에 복사했습니다.');
+} else {
+  // 2단계부터는 정적 /data.json을 배포하지 않는다(404). 자료는 서버 함수 /api/notes로만 읽는다.
+  await rm(output, { force: true });
+  console.log('2단계부터는 정적 data.json을 배포하지 않습니다.');
+}
 if (!process.argv.includes('--local')) {
   const identity = deploymentIdentity(process.env, config);
   await writeFile(resolve(root, 'public', 'aleph.json'),

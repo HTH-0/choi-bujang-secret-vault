@@ -15,7 +15,7 @@
 - 가상 메모 네 건은 Supabase 테이블 `public.vault_notes`에 있습니다. 만드는 SQL은 [supabase/2-vault-notes.sql](supabase/2-vault-notes.sql)이고, 메모 INSERT는 SQL Editor에서 직접 실행했습니다. 테이블은 RLS를 켰고 `anon`·`authenticated`에는 권한이 없습니다.
 - 화면은 `/data.json` 대신 Vercel 서버 함수 [api/notes.js](api/notes.js)의 `/api/notes`를 읽습니다. 함수는 환경변수 `SUPABASE_URL`과 서버 전용 `SUPABASE_SECRET_KEY`를 읽습니다. 두 값은 Vercel 프로젝트 설정의 Environment Variables 입력란에 직접 넣고, 코드·Git·로그·응답에는 넣지 않습니다. 값을 넣은 뒤에는 다시 배포해야 반영됩니다.
 - `vercel.json`의 `headers`가 모든 응답에 `X-Content-Type-Options: nosniff`를 붙입니다. 배포 뒤 `curl -I https://배포주소/`로 확인합니다.
-- `data.json`과 `public/data.json`의 `notes`는 비어 있고, 시작 틀의 확인 표시(`sampleMarker`)도 정적 `/data.json`과 `/aleph.json`에서 뺐습니다. 이 표시는 1단계 공개 자료에만 둡니다.
+- 루트 `data.json`의 `notes`는 비어 있고, 2단계부터 빌드가 `public/data.json`을 만들지 않아 배포된 `/data.json`은 404입니다. 시작 틀의 확인 표시(`sampleMarker`)도 `/aleph.json`에서 뺐습니다. 이 표시는 1단계 공개 자료에만 둡니다.
 - `aleph.config.json`의 `step`은 2이고 `repoUrl`·`publicAppUrl`은 실제 저장소와 배포 주소입니다. 빌드(`scripts/build-public.mjs`)와 배포 식별(`scripts/deployment-identity.mjs`)은 `step` 1과 2를 받습니다. `/aleph.json`에도 `step: 2`가 기록됩니다.
 - 다시 실행하는 방법: `npm run build -- --local`로 화면 파일을 만들고, `npm run test:r5`로 시험하고, 커밋·push 뒤 배포가 끝나면 `npm run bundle`을 실행합니다. `npm run bundle`은 작업 트리가 깨끗해야 하고 `bundle-notes.json`(커밋하지 않음)이 필요합니다. 실제 배포 주소로 `/data.json`과 `/api/notes`를 요청한 결과만 `src/attack-check.mjs`가 기록하며, 심판의 판정이 아닙니다.
 
@@ -32,7 +32,7 @@
 2. **GitHub 웹의 최신 파일**: 저장소 화면의 검색(`/`)에 `/실습용 가[상]/`를 입력합니다. 기본 브랜치의 현재 파일만 검색됩니다.
    - 기대: 결과 없음.
 3. **현재 배포 파일**: `curl -s https://배포주소/data.json`, `curl -s https://배포주소/`
-   - 기대: `/data.json`의 `notes`가 빈 배열이고, `/` 응답(HTML)에도 메모 문장이 없습니다. 카드는 브라우저가 `/api/notes`를 읽어 그립니다.
+   - 기대: `/data.json`은 404이거나 `notes`가 빈 배열이고, `/` 응답(HTML)에도 메모 문장이 없습니다. 카드는 브라우저가 `/api/notes`를 읽어 그립니다.
 4. **공개 API**: `curl -s https://배포주소/api/notes`
    - 이 주소는 로그인 없이 가상 메모 네 건을 돌려주는 것이 정상입니다. 아직 막지 않은 약점이므로 결과에 "공개됨"이라고 기록합니다.
 5. **옛 기록(해소 여부 점검)**: `git log --pickaxe-regex -S"실습용 가[상]" --oneline`
@@ -42,7 +42,7 @@
 |---|---|---|
 | 1. 로컬 HEAD 검색 | 결과 없음 (`origin/main` 최신 파일 기준, 커밋 `d54f14c`) | 2026-10-06 |
 | 2. GitHub 웹 검색 | 결과 없음 (`repo:HTH-0/choi-bujang-secret-vault /실습용 가[상]/`, 0 files) | 2026-10-06 |
-| 3. 배포된 `/data.json`·`/` | `/data.json`은 `notes` 0건, `/`의 HTML에도 메모 문장 없음 | 2026-10-06 |
+| 3. 배포된 `/data.json`·`/` | `/data.json`은 404(2단계부터 배포하지 않음), `/`의 HTML에도 메모 문장 없음 | 2026-10-06 |
 | 4. 공개 `/api/notes` | 로그인 없이 HTTP 200으로 가상 메모 4건이 읽힘 | 2026-10-06 |
 | 5. 옛 커밋 검색 | `312564a`(메모가 있던 첫 커밋)와 `2e7323a`(메모를 지운 커밋)가 나옴 | 2026-10-06 |
 
