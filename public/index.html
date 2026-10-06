@@ -16,6 +16,13 @@
     li { border: 1px solid #51667c; border-radius: 14px; padding: 17px 19px; background: #1a2a3d; }
     strong { display: block; font-size: 18px; margin-bottom: 5px; }
     li span { color: #bfd0e5; }
+    .auth { margin: 26px 0; padding: 18px 19px; border: 1px solid #51667c; border-radius: 14px; background: #1a2a3d; }
+    .auth h2 { margin: 0 0 8px; font-size: 20px; }
+    .auth label { display: block; margin: 10px 0 4px; font-size: 15px; color: #bfd0e5; }
+    .auth input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #51667c; border-radius: 8px; background: #101a28; color: #ecf4ff; font: inherit; }
+    .auth button { margin-top: 14px; padding: 10px 18px; border: 0; border-radius: 8px; background: #8ad8df; color: #101a28; font: inherit; font-weight: 700; cursor: pointer; }
+    .auth button:disabled { opacity: .5; cursor: not-allowed; }
+    #auth-error { min-height: 1.5em; margin: 10px 0 0; color: #ffb3c0; font-size: 15px; }
   </style>
 </head>
 <body>
@@ -24,8 +31,78 @@
     <h1>점령된 자료실</h1>
     <p>지금은 보호 장치가 없는 상태입니다. 아래 기록은 모두 실습을 위해 만든 가상 자료입니다.</p>
     <div class="notice">로그인하지 않은 방문자도 자료를 볼 수 있습니다. 공개 범위를 확인하고, 다음 제작 단계에서 접근을 차례로 막아 주세요.</div>
+    <section class="auth" aria-labelledby="auth-title">
+      <h2 id="auth-title">로그인</h2>
+      <p id="auth-status" aria-live="polite">로그아웃 상태입니다.</p>
+      <form id="login-form">
+        <label for="email">이메일</label>
+        <input id="email" type="email" autocomplete="username" required>
+        <label for="password">비밀번호</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+        <button type="submit" id="login-button">로그인</button>
+      </form>
+      <button type="button" id="logout-button" hidden>로그아웃</button>
+      <p id="auth-error" role="alert"></p>
+    </section>
     <ul id="notes" aria-live="polite"><li>가상 자료를 불러오는 중입니다.</li></ul>
   </main>
+  <script type="module">
+    // Supabase Auth 로그인·로그아웃. 두 값은 공개용입니다. 서버 전용 secret 키는 절대 넣지 않습니다.
+    const SUPABASE_URL = 'https://vdidbiqssjipvdjldlns.supabase.co';
+    const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_K4cauLVHChRkt6PExGNBhw_vyGxz0G8'; // sb_publishable_ 로 시작하는 공개용 키를 여기에 붙여 넣습니다.
+
+    const form = document.querySelector('#login-form');
+    const loginButton = document.querySelector('#login-button');
+    const logoutButton = document.querySelector('#logout-button');
+    const statusLine = document.querySelector('#auth-status');
+    const errorLine = document.querySelector('#auth-error');
+    const REASONS = {
+      invalid_credentials: '이메일 또는 비밀번호가 올바르지 않습니다.',
+      email_not_confirmed: '이메일 인증이 아직 끝나지 않았습니다.',
+      over_request_rate_limit: '시도가 너무 많습니다. 잠시 뒤 다시 시도해 주세요.',
+      user_banned: '이 계정은 사용할 수 없습니다.',
+    };
+    const reasonOf = (error, fallback) => REASONS[error?.code] ?? `${fallback}: ${error?.message ?? '알 수 없는 오류'}`;
+    const render = (session) => {
+      const email = session?.user?.email;
+      statusLine.textContent = email ? `로그인됨: ${email}` : '로그아웃 상태입니다.';
+      form.hidden = Boolean(email);
+      logoutButton.hidden = !email;
+    };
+
+    if (!SUPABASE_PUBLISHABLE_KEY.startsWith('sb_publishable_')) {
+      errorLine.textContent = '공개용(publishable) 키가 아직 설정되지 않았습니다. 로그인을 쓸 수 없습니다.';
+      loginButton.disabled = true;
+    } else {
+      try {
+        const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm');
+        const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+        const { data } = await supabase.auth.getSession();
+        render(data.session);
+        supabase.auth.onAuthStateChange((_event, session) => render(session));
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          errorLine.textContent = '';
+          loginButton.disabled = true;
+          const { error } = await supabase.auth.signInWithPassword({
+            email: form.elements.email.value.trim(),
+            password: form.elements.password.value,
+          });
+          form.elements.password.value = '';
+          loginButton.disabled = false;
+          if (error) errorLine.textContent = reasonOf(error, '로그인에 실패했습니다');
+        });
+        logoutButton.addEventListener('click', async () => {
+          errorLine.textContent = '';
+          const { error } = await supabase.auth.signOut();
+          if (error) errorLine.textContent = reasonOf(error, '로그아웃에 실패했습니다');
+        });
+      } catch (error) {
+        errorLine.textContent = `로그인 기능을 불러오지 못했습니다: ${error?.message ?? '알 수 없는 오류'}`;
+        loginButton.disabled = true;
+      }
+    }
+  </script>
   <script type="module">
     const list = document.querySelector('#notes');
     try {
