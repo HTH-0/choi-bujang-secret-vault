@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -41,8 +41,8 @@ export async function runAttackChecks(config) {
   const staticObserved = noteCount === null
     ? `/data.json을 읽지 못함 (HTTP ${response.status})`
     : `/data.json 메모 ${noteCount}건, 시작 틀 확인 표시 ${markerPresent ? '있음' : '없음'} (HTTP ${response.status})`;
-  if (config.step === 3) {
-    // 3단계: 로그인 없는 요청과 위조 토큰 요청이 자료 없이 거부되는지 실제로 보낸다.
+  if (config.step === 3 || config.step === 4) {
+    // 3~4단계: 로그인 없는 요청과 위조 토큰 요청이 자료 없이 거부되는지 실제로 보낸다.
     // 본문은 비워 보내므로 거부가 깨져도 자료가 바뀌지 않는다. 응답 본문은 기록하지 않고 상태 코드만 남긴다.
     const ghostId = '00000000-0000-4000-8000-000000000000';
     const status = async (method, path, headers = {}) => {
@@ -67,10 +67,13 @@ export async function runAttackChecks(config) {
       await rejected('anonymous_delete', '로그인 없는 DELETE가 거부됨', 'DELETE', `/api/notes/${ghostId}`),
       await rejected('forged_token_list_read', '위조 토큰 GET이 거부됨', 'GET', '/api/notes',
         { Authorization: 'Bearer aaa.bbb.ccc' }),
-      { attackId: 'login_a_crud', expected: 'A 로그인으로 메모 추가·수정·삭제가 됨',
+      { attackId: 'login_a_crud', expected: 'A 로그인으로 자기 메모 추가·수정·삭제가 됨',
         observed: '미실행: 로그인 토큰이 필요해 이 스크립트가 보내지 않았고, 화면에서 직접 확인해야 함' },
-      { attackId: 'login_b_other_note', expected: 'B가 A의 메모를 읽고 고칠 수 있음 (4단계에서 막을 허점)',
-        observed: '미실행: 4단계에서 기록' },
+      config.step === 3
+        ? { attackId: 'login_b_other_note', expected: 'B가 A의 메모를 읽고 고칠 수 있음 (4단계에서 막을 허점)',
+          observed: '미실행: 4단계에서 기록' }
+        : { attackId: 'login_b_other_note', expected: 'B 로그인으로 A의 메모 읽기·수정·삭제와 소유자 변경이 거부됨(404·403)',
+          observed: '미실행: A·B 로그인 토큰이 필요해 이 스크립트가 보내지 않았고, 배포 뒤 두 계정으로 직접 확인해야 함' },
     ];
   }
   const api = await fetch(new URL('/api/notes', app), {

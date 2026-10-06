@@ -62,6 +62,15 @@ export function rest({ method = 'GET', query = {}, body, prefer } = {}) {
 // 테이블의 content 칸이 API에서는 body다.
 export const toNote = (row) => ({ id: row.id, title: row.title, body: row.content });
 
+// 소유자 검사: DB 행의 owner_id가 검증된 사용자 ID와 같은지만 본다. 요청이 보낸 값은 쓰지 않는다.
+export const isOwner = (row, userId) => typeof row?.owner_id === 'string'
+  && typeof userId === 'string' && row.owner_id.toLowerCase() === userId.toLowerCase();
+
+// 본문이 소유자를 바꾸려는 값을 담고 있는지(본인 ID와 다른 값). 수정 요청에서 거부하는 데 쓴다.
+const OWNER_KEYS = ['owner_id', 'ownerId', 'userId', 'user_id'];
+export const triesToChangeOwner = (input, userId) => OWNER_KEYS.some((key) => key in input
+  && !(typeof input[key] === 'string' && input[key].toLowerCase() === userId.toLowerCase()));
+
 export function readJson(request) {
   let value = request.body;
   if (typeof value === 'string') {
