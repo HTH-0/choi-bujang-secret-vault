@@ -12,16 +12,20 @@ export async function runAttackChecks(config) {
       || app.pathname !== '/' || app.hostname.endsWith('.example')) {
     throw new Error('aleph.config.json의 실제 배포 주소를 먼저 넣어 주세요.');
   }
-  if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
+  if (config.step === 1 && (typeof config.sampleMarker !== 'string' || !config.sampleMarker)) {
+    throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
+  }
   const response = await fetch(new URL('/data.json', app), {
     redirect: 'error', signal: AbortSignal.timeout(10000),
   });
   let marker = false;
+  let markerPresent = false;
   let noteCount = null;
   if (response.ok) {
     try {
       const data = await response.json();
       marker = data?.sampleMarker === config.sampleMarker;
+      markerPresent = data !== null && typeof data === 'object' && 'sampleMarker' in data;
       if (Array.isArray(data?.notes)) noteCount = data.notes.length;
     } catch {
       // A non-JSON response is a failed check, not a successful deployment.
@@ -36,7 +40,7 @@ export async function runAttackChecks(config) {
   // 메모 본문은 기록하지 않고 상태 코드와 건수만 남긴다.
   const staticObserved = noteCount === null
     ? `/data.json을 읽지 못함 (HTTP ${response.status})`
-    : `/data.json 메모 ${noteCount}건 (HTTP ${response.status})`;
+    : `/data.json 메모 ${noteCount}건, 시작 틀 확인 표시 ${markerPresent ? '있음' : '없음'} (HTTP ${response.status})`;
   const api = await fetch(new URL('/api/notes', app), {
     redirect: 'error', signal: AbortSignal.timeout(10000),
   });
@@ -53,7 +57,7 @@ export async function runAttackChecks(config) {
     ? `비로그인 /api/notes 요청이 메모를 주지 않음 (HTTP ${api.status})`
     : `비로그인 /api/notes 요청에서 메모 ${apiCount}건이 읽힘 (HTTP ${api.status}), 아직 공개 약점`;
   return [
-    { attackId: 'static_data_json_notes', expected: '정적 /data.json에 가상 메모가 없음', observed: staticObserved },
+    { attackId: 'static_data_json_notes', expected: '정적 /data.json에 가상 메모와 시작 틀 확인 표시가 없음', observed: staticObserved },
     { attackId: 'anonymous_api_notes_read', expected: '비로그인 요청으로 /api/notes의 메모가 보이지 않음 (3단계 이후 목표)', observed: apiObserved },
   ];
 }

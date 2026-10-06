@@ -14,8 +14,8 @@ export function deploymentIdentity(env, config) {
       || !HOST.test(host || '') || ![1, 2].includes(config?.step)
       || typeof config.judgeIssuer !== 'string'
       || !/^https:\/\/[a-z0-9-]+\.up\.railway\.app\/defense\/judge$/iu.test(config.judgeIssuer)
-      || typeof config.sampleMarker !== 'string'
-      || !/^[A-Z0-9_]{1,80}$/u.test(config.sampleMarker)) {
+      || (config.step === 1 && (typeof config.sampleMarker !== 'string'
+        || !/^[A-Z0-9_]{1,80}$/u.test(config.sampleMarker)))) {
     throw new Error('배포 식별 정보를 확인할 수 없습니다. Vercel 시스템 환경변수와 1단계 시작 틀을 확인하세요.');
   }
   return {
@@ -25,6 +25,7 @@ export function deploymentIdentity(env, config) {
     commit: commit.toLowerCase(),
     publicAppUrl: `https://${host.toLowerCase()}`,
     judgeIssuer: config.judgeIssuer,
-    sampleMarker: config.sampleMarker,
+    // 시작 틀의 확인 표시는 1단계 공개 자료에만 둔다. 2단계부터 정적 응답에서 뺀다.
+    ...(config.step === 1 ? { sampleMarker: config.sampleMarker } : {}),
   };
 }
