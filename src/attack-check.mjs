@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -41,8 +41,8 @@ export async function runAttackChecks(config) {
   const staticObserved = noteCount === null
     ? `/data.json을 읽지 못함 (HTTP ${response.status})`
     : `/data.json 메모 ${noteCount}건, 시작 틀 확인 표시 ${markerPresent ? '있음' : '없음'} (HTTP ${response.status})`;
-  if (config.step === 3 || config.step === 4) {
-    // 3~4단계: 로그인 없는 요청과 위조 토큰 요청이 자료 없이 거부되는지 실제로 보낸다.
+  if (config.step >= 3 && config.step <= 5) {
+    // 3~5단계: 로그인 없는 요청과 위조 토큰 요청이 자료 없이 거부되는지 실제로 보낸다.
     // 본문은 비워 보내므로 거부가 깨져도 자료가 바뀌지 않는다. 응답 본문은 기록하지 않고 상태 코드만 남긴다.
     const ghostId = '00000000-0000-4000-8000-000000000000';
     const status = async (method, path, headers = {}) => {
@@ -59,6 +59,47 @@ export async function runAttackChecks(config) {
         ? `${method} ${path} 요청이 로그인 없이 거부됨 (HTTP 401)`
         : `${method} ${path} 요청이 거부되지 않음 (HTTP ${code})` };
     };
+    // 5단계: 원본 자료 주소(originalApiUrl)로 브라우저가 가진 공개(anon) 키만으로 직접 요청한다.
+    // 공개 키는 배포된 화면에서 읽는다. 응답 본문은 기록하지 않고 상태 코드와 오류 코드만 남긴다.
+    const directChecks = async () => {
+      if (config.step < 5) return [];
+      let original;
+      try { original = new URL(config.originalApiUrl); } catch {
+        throw new Error('aleph.config.json의 originalApiUrl에 쿼리 없는 HTTPS 원본 자료 주소를 넣어 주세요.');
+      }
+      if (original.protocol !== 'https:' || original.search || original.hash || original.username || original.password) {
+        throw new Error('aleph.config.json의 originalApiUrl에 쿼리 없는 HTTPS 원본 자료 주소를 넣어 주세요.');
+      }
+      const page = await fetch(app, { redirect: 'error', signal: AbortSignal.timeout(10000) });
+      const anonKey = (await page.text()).match(/sb_publishable_[A-Za-z0-9_-]{10,}/u)?.[0];
+      const direct = async (attackId, expected, label, method, headers) => {
+        const target = new URL(original);
+        if (method === 'GET') { target.searchParams.set('select', 'id'); target.searchParams.set('limit', '1'); }
+        let code = null;
+        const sent = await fetch(target, {
+          method, redirect: 'error', signal: AbortSignal.timeout(10000),
+          headers: method === 'POST' ? { 'Content-Type': 'application/json', ...headers } : headers,
+          body: method === 'POST' ? '{}' : undefined,
+        });
+        try { const body = await sent.json(); if (typeof body?.code === 'string') code = body.code; } catch { /* 본문은 기록하지 않는다 */ }
+        const denied = sent.status === 401 || sent.status === 403;
+        return { attackId, expected, observed: denied
+          ? `${label}이(가) 거부됨 (HTTP ${sent.status}${code ? `, ${code}` : ''})`
+          : `${label}이(가) 거부되지 않음 (HTTP ${sent.status})` };
+      };
+      const withKey = anonKey ? { apikey: anonKey, Authorization: `Bearer ${anonKey}` } : null;
+      return [
+        await direct('original_direct_no_key', '키 없는 원본 직접 요청이 거부됨', '키 없는 원본 GET', 'GET', {}),
+        withKey
+          ? await direct('original_direct_anon_read', '공개(anon) 키로 원본 직접 읽기가 거부됨', '공개 키 원본 GET', 'GET', withKey)
+          : { attackId: 'original_direct_anon_read', expected: '공개(anon) 키로 원본 직접 읽기가 거부됨',
+            observed: '미실행: 배포된 화면에서 공개 키를 찾지 못함' },
+        withKey
+          ? await direct('original_direct_anon_write', '공개(anon) 키로 원본 직접 쓰기가 거부됨', '공개 키 원본 POST', 'POST', withKey)
+          : { attackId: 'original_direct_anon_write', expected: '공개(anon) 키로 원본 직접 쓰기가 거부됨',
+            observed: '미실행: 배포된 화면에서 공개 키를 찾지 못함' },
+      ];
+    };
     return [
       { attackId: 'static_data_json_notes', expected: '정적 /data.json에 가상 메모와 시작 틀 확인 표시가 없음', observed: staticObserved },
       await rejected('anonymous_list_read', '로그인 없는 목록 GET이 거부됨', 'GET', '/api/notes'),
@@ -67,6 +108,7 @@ export async function runAttackChecks(config) {
       await rejected('anonymous_delete', '로그인 없는 DELETE가 거부됨', 'DELETE', `/api/notes/${ghostId}`),
       await rejected('forged_token_list_read', '위조 토큰 GET이 거부됨', 'GET', '/api/notes',
         { Authorization: 'Bearer aaa.bbb.ccc' }),
+      ...await directChecks(),
       { attackId: 'login_a_crud', expected: 'A 로그인으로 자기 메모 추가·수정·삭제가 됨',
         observed: '미실행: 로그인 토큰이 필요해 이 스크립트가 보내지 않았고, 화면에서 직접 확인해야 함' },
       config.step === 3

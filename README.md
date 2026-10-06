@@ -10,7 +10,24 @@
 
 배포가 끝나면 `/`에서 점령된 가상 자료실을 볼 수 있습니다. 시작 틀에서는 `/data.json`에 같은 가상 메모가 공개됩니다. 이 공개 상태를 확인하는 것이 1단계의 출발점입니다. 1단계 접수와 심판 판정은 포털에서 확인합니다.
 
+## 5단계 현황: 자료 요청을 서버 한곳으로
+
+- 브라우저 코드(`public/index.html`)가 메모 자료를 Supabase에서 직접 읽거나 고치는 곳을 찾았고 **없음**이었습니다. Supabase는 로그인(Auth) 호출에만 쓰이고, 자료 요청은 항상 `/api/notes`·`/api/notes/:id` 서버 함수를 거칩니다. 그래서 화면 코드는 바꾸지 않았습니다.
+- 메모 테이블의 직접 권한을 거두는 SQL([supabase/5-vault-notes-revoke-direct.sql](supabase/5-vault-notes-revoke-direct.sql))을 학생이 SQL Editor에서 실행했습니다. `public.vault_notes` 한 테이블에서 `PUBLIC`·`anon`·`authenticated`의 권한을 모두 회수했고, RLS와 4단계 정책은 남겼으며 다른 테이블은 건드리지 않았습니다. 서버 함수는 서버 전용 키(`service_role`)로 접근하므로 영향이 없어야 합니다.
+- `aleph.config.json`: `step` 5, `originalApiUrl`은 쿼리 없는 원본 자료 HTTPS 주소 `https://vdidbiqssjipvdjldlns.supabase.co/rest/v1/vault_notes`입니다(Supabase의 메모 테이블 REST 경로). 로그인·소유자 검사와 서버 전용 설정은 그대로입니다. 빌드와 배포 식별은 `step` 1~5를 받습니다.
+- 다시 실행하는 방법: `npm run build -- --local`, `npm run test:r5`, 커밋·push, 배포가 끝나면 `npm run bundle`. 로그인 시험은 배포 주소 화면에서 A 계정으로 직접 하고, 비밀번호는 화면에만 입력합니다.
+
+**5단계에서 확인한 것과 하지 않은 것**
+- 확인함(제가 직접 보낸 요청, 심판 판정 아님): 원본 주소로 키 없이 요청하면 HTTP 401, 공개(anon) 키로 GET은 401 `42501 permission denied`, 공개 키로 POST도 401 `42501`이었습니다. SQL 적용 전에도 anon은 거부됐고, 적용 뒤에도 같습니다.
+- 확인함(학생이 SQL Editor에서): 적용 전 표에서 `anon`은 권한이 없고 `authenticated`는 `DELETE, INSERT, SELECT, UPDATE`, `service_role`은 전체였습니다. 적용 SQL이 `Success`였고, `authenticated`의 직접 읽기 거부 시험이 `OK … permission denied`로 나왔습니다.
+- 확인함(제가 가짜 DB로 한 로컬 시험): A의 목록 읽기·추가·한 건 읽기·수정·삭제·삭제 뒤 404가 서버 함수에서 되고, B의 A 메모 접근은 404, 로그인 없는 요청은 401입니다. 서버는 항상 서버 전용 키로 DB 한곳에만 요청합니다.
+- **미확인**: 적용 뒤의 권한 표(`service_role` 포함)와 `PUBLIC`까지 보는 원본 권한 목록을 학생이 다시 실행해 본 결과는 받지 못했습니다.
+- **미확인**: SQL 적용 뒤 실제 A 로그인으로 화면이 계속 정상인지(메모 보기·추가·수정·삭제)는 아직 확인하지 못했습니다. 서버 전용 키는 권한 회수와 별개라 정상이어야 하지만 학생이 확인해야 합니다.
+- **미확인**: 심판이 하는 원본 직접 요청(anon 키)의 결과는 제가 볼 수 없습니다. `src/attack-check.mjs`가 보낸 같은 방식의 요청만 기록합니다.
+
 ## 4단계 현황: 로그인해도 내 자료만 보이게
+
+> 5단계에서 `authenticated`의 직접 권한도 회수했습니다. 아래 DB 권한 설명은 4단계 시점의 기록입니다.
 
 - 자료 API가 모든 동작에서 DB 행의 `owner_id`와 서버가 검증한 사용자 ID를 비교합니다. 요청 URL·본문·쿼리의 `owner_id`·`userId`는 읽지 않습니다. 코드는 [api/notes.js](api/notes.js), [api/notes/[id].js](api/notes/[id].js), [src/notes-api.mjs](src/notes-api.mjs)입니다. `src/verify-login.mjs`는 고치지 않았습니다.
 - 읽기: 목록은 본인 행만 줍니다. 한 건 GET은 본인 것이 아니거나 없으면 같은 404입니다.

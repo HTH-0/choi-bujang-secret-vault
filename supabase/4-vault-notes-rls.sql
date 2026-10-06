@@ -1,6 +1,7 @@
 -- 4단계: 메모 테이블의 최소 권한과 RLS 정책 (학습용)
 -- Supabase 대시보드 > SQL Editor에서 학생이 직접 검토해 실행합니다. 대상은 public.vault_notes 하나입니다.
 -- 이 파일에는 키도, 메모 문장도, 이메일도 넣지 않습니다.
+-- 5단계에서 authenticated의 직접 권한(아래 grant)은 다시 회수했습니다. supabase/5-vault-notes-revoke-direct.sql 참고.
 -- 앱 API는 서버 전용 키(service_role)로 접근하므로 이 SQL과 별개로 코드가 소유자를 검사합니다.
 -- 이 정책은 authenticated 역할이 DB에 직접 요청하는 경우의 두 번째 방어선입니다.
 

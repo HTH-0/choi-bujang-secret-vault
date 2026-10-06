@@ -6,7 +6,7 @@ const root = resolve(import.meta.dirname, '..');
 const source = resolve(root, 'data.json');
 const output = resolve(root, 'public', 'data.json');
 const config = JSON.parse(await readFile(resolve(root, 'aleph.config.json'), 'utf8'));
-if (![1, 2, 3, 4].includes(config.step)) {
+if (![1, 2, 3, 4, 5].includes(config.step)) {
   throw new Error('이 단계의 빌드는 아직 정해지지 않았습니다. scripts/build-public.mjs를 확인하세요.');
 }
 const data = JSON.parse(await readFile(source, 'utf8'));
