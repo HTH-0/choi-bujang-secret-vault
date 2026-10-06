@@ -15,7 +15,7 @@
 - 브라우저 코드(`public/index.html`)가 메모 자료를 Supabase에서 직접 읽거나 고치는 곳을 찾았고 **없음**이었습니다. Supabase는 로그인(Auth) 호출에만 쓰이고, 자료 요청은 항상 `/api/notes`·`/api/notes/:id` 서버 함수를 거칩니다. 그래서 화면 코드는 바꾸지 않았습니다.
 - 메모 테이블의 직접 권한을 거두는 SQL([supabase/5-vault-notes-revoke-direct.sql](supabase/5-vault-notes-revoke-direct.sql))을 학생이 SQL Editor에서 실행했습니다. `public.vault_notes` 한 테이블에서 `PUBLIC`·`anon`·`authenticated`의 권한을 모두 회수했고, RLS와 4단계 정책은 남겼으며 다른 테이블은 건드리지 않았습니다. 서버 함수는 서버 전용 키(`service_role`)로 접근하므로 영향이 없어야 합니다.
 - `aleph.config.json`: `step` 5, `originalApiUrl`은 쿼리 없는 원본 자료 HTTPS 주소 `https://vdidbiqssjipvdjldlns.supabase.co/rest/v1/vault_notes`입니다(Supabase의 메모 테이블 REST 경로). 로그인·소유자 검사와 서버 전용 설정은 그대로입니다. 빌드와 배포 식별은 `step` 1~5를 받습니다.
-- `/aleph.json`에 `allowedRoutes`(`aleph.config.json`의 허용 경로)도 함께 기록합니다. 빌드가 `step` 3부터 이 값을 확인하고, 비어 있거나 형식이 틀리면 멈춥니다.
+- `/aleph.json`에 `allowedRoutes`(`aleph.config.json`의 허용 경로)와 `originalApiUrl`(원본 자료 주소)도 함께 기록합니다. 빌드가 `step` 3부터 허용 경로를, `step` 5부터 원본 자료 주소를 확인하고, 비어 있거나 형식이 틀리면(쿼리·해시·계정 정보가 있거나 HTTPS가 아니면) 멈춥니다. 심판이 읽는 "배포 설정"은 설정 파일이 아니라 배포된 `/aleph.json`이라서 필요했습니다.
 - 화면 코드(`public/index.html`)에서 Supabase 공개 키(`sb_publishable_…`)를 뺐습니다. 로그인에 필요한 주소와 공개 키는 서버 함수 [api/config.js](api/config.js)가 Vercel 환경변수(`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`)에서 읽어 `GET /api/config`로 내려주고, 화면은 시작할 때 이를 받아 `supabase-js`를 만듭니다. 이 함수는 `sb_publishable_`로 시작하는 값만 내려주며 서버 전용 secret 키는 내려주지 않습니다. 공개 키는 로그인을 하려면 브라우저가 갖고 있어야 하는 공개용 값이라, 정적 파일에서 없앴을 뿐 실행 중에 브라우저로 전달되는 것은 그대로입니다. `SUPABASE_PUBLISHABLE_KEY`는 학생이 Vercel 환경변수 입력란에 직접 넣어야 하고, 넣지 않으면 로그인이 되지 않습니다.
 - 다시 실행하는 방법: `npm run build -- --local`, `npm run test:r5`, 커밋·push, 배포가 끝나면 `npm run bundle`. 로그인 시험은 배포 주소 화면에서 A 계정으로 직접 하고, 비밀번호는 화면에만 입력합니다.
 

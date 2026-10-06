@@ -98,7 +98,21 @@ export async function runAttackChecks(config) {
           : `${label}이(가) 거부되지 않음 (HTTP ${sent.status})` };
       };
       const withKey = anonKey ? { apikey: anonKey, Authorization: `Bearer ${anonKey}` } : null;
+      // 배포 설정(/aleph.json)에 원본 자료 주소와 허용 경로가 실제로 기록됐는지 본다.
+      let deployed = null;
+      try {
+        const identity = await fetch(new URL('/aleph.json', app), { redirect: 'error', signal: AbortSignal.timeout(10000) });
+        deployed = await identity.json();
+      } catch { /* 읽지 못하면 아래에서 그대로 기록한다 */ }
       return [
+        { attackId: 'deployed_config_original_api_url', expected: '/aleph.json에 쿼리 없는 HTTPS 원본 자료 주소가 있음',
+          observed: deployed?.originalApiUrl === `${original.origin}${original.pathname}`
+            ? '/aleph.json의 originalApiUrl이 설정과 같음'
+            : '/aleph.json에 설정과 같은 originalApiUrl이 없음' },
+        { attackId: 'deployed_config_allowed_routes', expected: '/aleph.json에 허용 경로가 하나 이상 있음',
+          observed: Array.isArray(deployed?.allowedRoutes) && deployed.allowedRoutes.length
+            ? `/aleph.json의 allowedRoutes ${deployed.allowedRoutes.length}개`
+            : '/aleph.json에 allowedRoutes가 없음' },
         { attackId: 'static_html_public_key', expected: '첫 화면 HTML에 Supabase 공개 키가 없음',
           observed: htmlKey ? '첫 화면 HTML에 공개 키 형식의 값이 있음 (문제)' : '첫 화면 HTML에 공개 키 형식의 값이 없음' },
         await direct('original_direct_no_key', '키 없는 원본 직접 요청이 거부됨', '키 없는 원본 GET', 'GET', {}),

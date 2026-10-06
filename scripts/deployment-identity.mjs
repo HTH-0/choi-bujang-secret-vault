@@ -28,6 +28,18 @@ export function deploymentIdentity(env, config) {
     }
     allowedRoutes = [...routes];
   }
+  // 5단계부터 원본 자료 주소도 /aleph.json에 기록한다. 쿼리·해시·계정 정보가 없는 HTTPS 주소만 받는다.
+  let originalApiUrl;
+  if (config.step >= 5) {
+    const raw = config.originalApiUrl;
+    let parsed = null;
+    try { parsed = new URL(raw); } catch { /* 아래에서 멈춘다 */ }
+    if (typeof raw !== 'string' || raw.length > 300 || /[?#\s]/u.test(raw) || !parsed
+        || parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.search || parsed.hash) {
+      throw new Error('5단계부터 aleph.config.json의 originalApiUrl에 쿼리 없는 HTTPS 원본 자료 주소가 필요합니다.');
+    }
+    originalApiUrl = `${parsed.origin}${parsed.pathname}`;
+  }
   return {
     schema: 'aleph.defense.deployment.v1',
     step: config.step,
@@ -36,6 +48,7 @@ export function deploymentIdentity(env, config) {
     publicAppUrl: `https://${host.toLowerCase()}`,
     judgeIssuer: config.judgeIssuer,
     ...(allowedRoutes ? { allowedRoutes } : {}),
+    ...(originalApiUrl ? { originalApiUrl } : {}),
     // 시작 틀의 확인 표시는 1단계 공개 자료에만 둔다. 2단계부터 정적 응답에서 뺀다.
     ...(config.step === 1 ? { sampleMarker: config.sampleMarker } : {}),
   };
