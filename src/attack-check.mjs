@@ -70,8 +70,18 @@ export async function runAttackChecks(config) {
       if (original.protocol !== 'https:' || original.search || original.hash || original.username || original.password) {
         throw new Error('aleph.config.json의 originalApiUrl에 쿼리 없는 HTTPS 원본 자료 주소를 넣어 주세요.');
       }
+      // 첫 화면(정적 HTML)에 공개 키가 있는지 본다. 키 값은 기록하지 않는다.
       const page = await fetch(app, { redirect: 'error', signal: AbortSignal.timeout(10000) });
-      const anonKey = (await page.text()).match(/sb_publishable_[A-Za-z0-9_-]{10,}/u)?.[0];
+      const htmlKey = (await page.text()).match(/sb_publishable_[A-Za-z0-9_-]{10,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}/u)?.[0];
+      // 브라우저가 로그인 때 받는 공개 키는 서버 함수 /api/config에서 가져와 원본 직접 요청에 쓴다.
+      let anonKey = htmlKey ?? null;
+      if (!anonKey) {
+        try {
+          const configResponse = await fetch(new URL('/api/config', app), { redirect: 'error', signal: AbortSignal.timeout(10000) });
+          const body = await configResponse.json();
+          if (typeof body?.publishableKey === 'string' && body.publishableKey.startsWith('sb_publishable_')) anonKey = body.publishableKey;
+        } catch { /* 키를 받지 못하면 아래에서 미실행으로 기록한다 */ }
+      }
       const direct = async (attackId, expected, label, method, headers) => {
         const target = new URL(original);
         if (method === 'GET') { target.searchParams.set('select', 'id'); target.searchParams.set('limit', '1'); }
@@ -89,15 +99,17 @@ export async function runAttackChecks(config) {
       };
       const withKey = anonKey ? { apikey: anonKey, Authorization: `Bearer ${anonKey}` } : null;
       return [
+        { attackId: 'static_html_public_key', expected: '첫 화면 HTML에 Supabase 공개 키가 없음',
+          observed: htmlKey ? '첫 화면 HTML에 공개 키 형식의 값이 있음 (문제)' : '첫 화면 HTML에 공개 키 형식의 값이 없음' },
         await direct('original_direct_no_key', '키 없는 원본 직접 요청이 거부됨', '키 없는 원본 GET', 'GET', {}),
         withKey
           ? await direct('original_direct_anon_read', '공개(anon) 키로 원본 직접 읽기가 거부됨', '공개 키 원본 GET', 'GET', withKey)
           : { attackId: 'original_direct_anon_read', expected: '공개(anon) 키로 원본 직접 읽기가 거부됨',
-            observed: '미실행: 배포된 화면에서 공개 키를 찾지 못함' },
+            observed: '미실행: /api/config에서 공개 키를 받지 못함' },
         withKey
           ? await direct('original_direct_anon_write', '공개(anon) 키로 원본 직접 쓰기가 거부됨', '공개 키 원본 POST', 'POST', withKey)
           : { attackId: 'original_direct_anon_write', expected: '공개(anon) 키로 원본 직접 쓰기가 거부됨',
-            observed: '미실행: 배포된 화면에서 공개 키를 찾지 못함' },
+            observed: '미실행: /api/config에서 공개 키를 받지 못함' },
       ];
     };
     return [
