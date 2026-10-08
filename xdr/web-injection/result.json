@@ -10,9 +10,9 @@
     },
     {
       "alertId": "wi-02",
-      "action": "alert",
-      "confidence": 0.7,
-      "reason": "애매 · 정리한 패턴 밖의 반복 신호(9번) · 근거가 없어 block 하지 않고 alert"
+      "action": "block",
+      "confidence": 0.95,
+      "reason": "같은 주소의 주입 표기 반복 패턴에 맞음 · 9번 반복"
     },
     {
       "alertId": "wi-03",
@@ -30,13 +30,13 @@
       "alertId": "wi-05",
       "action": "block",
       "confidence": 0.9,
-      "reason": "요청 인자 안의 SQL 구문 패턴에 맞음 · 15번 반복"
+      "reason": "요청 인자 안의 SQL 구문 + 같은 주소의 주입 표기 반복 패턴에 맞음 · 15번 반복"
     },
     {
       "alertId": "wi-06",
-      "action": "alert",
-      "confidence": 0.7,
-      "reason": "애매 · 정리한 패턴 밖의 반복 신호(11번) · 근거가 없어 block 하지 않고 alert"
+      "action": "block",
+      "confidence": 0.95,
+      "reason": "같은 주소의 주입 표기 반복 패턴에 맞음 · 11번 반복"
     },
     {
       "alertId": "wi-07",
@@ -66,7 +66,7 @@
       "alertId": "wi-11",
       "action": "alert",
       "confidence": 0.5,
-      "reason": "애매 · 요청 인자 안의 SQL 구문에 못 미침 · 반복·근거가 약해 alert"
+      "reason": "애매 · 같은 주소의 주입 표기 반복에 못 미침 · 반복·근거가 약해 alert"
     },
     {
       "alertId": "wi-12",
@@ -160,8 +160,8 @@
     }
   ],
   "counts": {
-    "block": 6,
-    "alert": 11,
+    "block": 8,
+    "alert": 9,
     "record": 9
   }
 }

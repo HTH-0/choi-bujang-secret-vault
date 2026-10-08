@@ -126,7 +126,7 @@
 경보는 수업용 가상 Wazuh 경보(`xdr/fixtures/`)이고, 판단은 파일 하나(`decide.mjs`)가 인터넷 없이 혼자 합니다.
 
 - 무차별 로그인: `xdr/brute-force/` (패턴 4개, T1110)
-- 웹 주입: `xdr/web-injection/` (패턴 2개 — SQL 구문, `../` 반복, T1190). 스크립트 태그는 근거를 확인하지 못해 뺐습니다.
+- 웹 주입: `xdr/web-injection/` (패턴 3개 — SQL 구문, `../` 반복, 같은 주소의 주입 표기 반복, T1190). 세 번째는 T1190 페이지가 스크립트 태그를 직접 적지 않아 일반 탐지 문장(비정상 요청·접근 로그의 의심 요청)에 기댄 해석입니다.
 - 다시 실행: `npm run xdr:run -- brute-force` 또는 `npm run xdr:run -- web-injection` → 각 폴더의 `result.json`
 - 연결: `node xdr/<모듈>/respond.mjs`가 block만 만료 시각·근거 경보 번호가 있는 거부 규칙으로 쓰고, block·alert는 `xdr/alerts.log`에 쌓습니다. 판정기(`src/decider.mjs`)가 읽지만, 출발 주소를 주체로 바꾸는 `xdr/subject-map.json`이 없으면 실제로 적용되는 주체는 없습니다.
 - 확신도 기준(0.85 이상 block, 0.5 이상 alert)은 과제가 정했고, 건수·수준 같은 숫자 기준은 연습 경보를 보고 제가 정한 값이며 ATT&CK가 정한 값이 아닙니다.

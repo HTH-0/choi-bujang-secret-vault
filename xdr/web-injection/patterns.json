@@ -15,10 +15,20 @@
       "name": "요청 인자 안의 SQL 구문",
       "technique": "T1190",
       "condition": "같은 출발 주소의 요청 인자(주소의 질의 부분)에 SQL 구문 표기가 들어 있고, 설명에 반복이 드러난다.",
-      "fields": ["data.srcip", "data.url", "data.count", "rule.description", "timestamp"],
+      "fields": [
+        "data.srcip",
+        "data.url",
+        "data.count",
+        "rule.description",
+        "timestamp"
+      ],
       "evidence": "T1190 사례: APT41이 외부 공개 앱의 SQL 주입 등을 악용해 최초 침투를 했다(캠페인 C0017).",
       "source": "https://attack.mitre.org/campaigns/C0017/",
-      "fixtureExamples": ["wi-01", "wi-04", "wi-08"],
+      "fixtureExamples": [
+        "wi-01",
+        "wi-04",
+        "wi-08"
+      ],
       "notes": "wi-05는 스크립트 표식과 SQL 표식이 섞여 있어 예시에서 뺐습니다. 반복 횟수의 기준은 ATT&CK에 없습니다."
     },
     {
@@ -26,25 +36,47 @@
       "name": "경로 거슬러 올라가기(../) 반복",
       "technique": "T1190",
       "condition": "같은 출발 주소의 요청 인자(파일 경로 부분)에 상위 폴더로 거슬러 올라가는 표기가 반복해서 들어 있다.",
-      "fields": ["data.srcip", "data.url", "data.count", "rule.description", "timestamp"],
+      "fields": [
+        "data.srcip",
+        "data.url",
+        "data.count",
+        "rule.description",
+        "timestamp"
+      ],
       "evidence": "T1190 사례: APT41이 외부 공개 앱의 디렉터리 순회 취약점을 악용해 최초 침투를 했다(캠페인 C0017).",
       "source": "https://attack.mitre.org/campaigns/C0017/",
-      "fixtureExamples": ["wi-03", "wi-07"],
+      "fixtureExamples": [
+        "wi-03",
+        "wi-07"
+      ],
       "notes": "페이지는 '디렉터리 순회'라는 취약점 이름만 적고 ../ 표기를 직접 적지 않았습니다. 표기와의 연결은 이름 풀이에 기댄 것입니다."
+    },
+    {
+      "id": "repeated_injection_marker",
+      "name": "같은 주소의 주입 표기 반복",
+      "technique": "T1190",
+      "condition": "같은 출발 주소의 요청에 스크립트 삽입 표기나 명령 구분자 표기 같은 주입 모양이 반복해서 들어 있다.",
+      "fields": [
+        "data.srcip",
+        "data.url",
+        "data.count",
+        "rule.description",
+        "timestamp"
+      ],
+      "evidence": "T1190 탐지(DET0080): 외부 공개 앱으로 가는 비정상 요청 패턴과 접근 로그의 의심 요청을 감시한다.",
+      "source": "https://attack.mitre.org/techniques/T1190/",
+      "fixtureExamples": [
+        "wi-02",
+        "wi-05",
+        "wi-06"
+      ],
+      "notes": "T1190 페이지는 스크립트 태그나 명령 구분자를 직접 적지 않았습니다. 근거는 '비정상 요청·의심 요청'이라는 일반 탐지 문장이고, 이 표기들을 그 안에 넣은 것은 이 파일의 해석입니다. 반복 횟수의 기준은 ATT&CK에 없습니다."
     }
   ],
   "excluded": [
     {
-      "item": "요청 인자 안의 스크립트 태그",
-      "reason": "T1190 페이지에서 스크립트 삽입(XSS)이나 스크립트 태그를 다룬 문장을 확인하지 못해 패턴으로 넣지 않았습니다. 근거가 되는 다른 기법을 정하면 추가할 수 있습니다."
-    },
-    {
-      "item": "wi-06 명령 구분자 표기가 연속 요청에 있음",
-      "reason": "요청한 신호(SQL·스크립트·../)에 없고, 페이지에서 이 모양을 따로 설명한 근거를 확인하지 못했습니다."
-    },
-    {
-      "item": "wi-02, wi-05 스크립트 표식이 들어간 경보",
-      "reason": "위 스크립트 태그 패턴을 뺐으므로 패턴 예시에서 제외했습니다. 판정 코드에서는 애매하거나 별도 근거가 필요한 경보로 남습니다."
+      "item": "한 번뿐인 따옴표·구분 문자·수업 단어(select, 스크립트 등)",
+      "reason": "반복이 없으면 일반 탐지 문장에도 맞지 않아 패턴으로 넣지 않았습니다. 판정 코드에서는 애매한 경보로 남깁니다."
     }
   ]
 }
