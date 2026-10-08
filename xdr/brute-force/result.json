@@ -66,55 +66,55 @@
       "alertId": "bf-11",
       "action": "alert",
       "confidence": 0.5,
-      "reason": "애매 · 많은 실패 뒤에 성공에 못 미침(실패 4건) · 확신도 응답 없음"
+      "reason": "애매 · 많은 실패 뒤에 성공에 못 미침(실패 4건) · 확신도를 받지 못해 alert"
     },
     {
       "alertId": "bf-12",
       "action": "alert",
       "confidence": 0.5,
-      "reason": "애매 · 많은 실패 뒤에 성공에 못 미침(실패 6건) · 확신도 응답 없음"
+      "reason": "애매 · 많은 실패 뒤에 성공에 못 미침(실패 6건) · 확신도를 받지 못해 alert"
     },
     {
       "alertId": "bf-13",
       "action": "alert",
       "confidence": 0.5,
-      "reason": "애매 · 같은 주소의 로그인 실패 연속에 못 미침(실패 3건) · 확신도 응답 없음"
+      "reason": "애매 · 같은 주소의 로그인 실패 연속에 못 미침(실패 3건) · 확신도를 받지 못해 alert"
     },
     {
       "alertId": "bf-14",
       "action": "alert",
       "confidence": 0.5,
-      "reason": "애매 · 같은 주소의 로그인 실패 연속에 못 미침(실패 5건) · 확신도 응답 없음"
+      "reason": "애매 · 같은 주소의 로그인 실패 연속에 못 미침(실패 5건) · 확신도를 받지 못해 alert"
     },
     {
       "alertId": "bf-15",
       "action": "alert",
       "confidence": 0.5,
-      "reason": "애매 · 같은 주소의 로그인 실패 연속에 못 미침(실패 2건) · 확신도 응답 없음"
+      "reason": "애매 · 같은 주소의 로그인 실패 연속에 못 미침(실패 2건) · 확신도를 받지 못해 alert"
     },
     {
       "alertId": "bf-16",
       "action": "alert",
       "confidence": 0.5,
-      "reason": "애매 · 같은 주소의 로그인 실패 연속에 못 미침(실패 3건) · 확신도 응답 없음"
+      "reason": "애매 · 같은 주소의 로그인 실패 연속에 못 미침(실패 3건) · 확신도를 받지 못해 alert"
     },
     {
       "alertId": "bf-17",
       "action": "alert",
       "confidence": 0.5,
-      "reason": "애매 · 많은 실패 뒤에 성공에 못 미침(실패 4건) · 확신도 응답 없음"
+      "reason": "애매 · 많은 실패 뒤에 성공에 못 미침(실패 4건) · 확신도를 받지 못해 alert"
     },
     {
       "alertId": "bf-18",
       "action": "alert",
       "confidence": 0.5,
-      "reason": "애매 · 같은 주소의 로그인 실패 연속에 못 미침(실패 8건) · 확신도 응답 없음"
+      "reason": "애매 · 같은 주소의 로그인 실패 연속에 못 미침(실패 8건) · 확신도를 받지 못해 alert"
     },
     {
       "alertId": "bf-19",
       "action": "alert",
       "confidence": 0.5,
-      "reason": "애매 · 같은 주소의 로그인 실패 연속에 못 미침(실패 3건) · 확신도 응답 없음"
+      "reason": "애매 · 같은 주소의 로그인 실패 연속에 못 미침(실패 3건) · 확신도를 받지 못해 alert"
     },
     {
       "alertId": "bf-20",

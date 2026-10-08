@@ -3,6 +3,8 @@
 //  2) 결과 가운데 차단 후보(block)만 ZTNA 판정기의 거부 규칙으로 xdr/block-rules.json에 넣고(만료 시각·근거 경보 번호 포함),
 //  3) block·alert 알림을 xdr/alerts.log에 한 줄씩 쌓는다.
 // decide.mjs는 판단 결과만 돌려주고 파일 쓰기·판정기 연결은 하지 않는다. 원본 경보는 고치지 않는다.
+// decide.mjs는 심판이 인터넷 없이 한 파일로 불러 쓰므로 Jev를 부르지 않는다. 애매한 경보(alert로 답한 것)에 Jev(TypeSafe)의
+// 확신도를 받아 덮어쓰는 일은 이 파일이 맡는다. 환경변수 TYPESAFE_API_KEY가 있을 때만 부르고, 응답이 없으면 alert를 그대로 둔다.
 // 판정기(src/decider.mjs)는 이 규칙 파일을 읽어 요청의 subjectId·at(요청 계약에 있는 값)으로만 거부 여부를 정한다.
 // 요청 계약에는 출발 주소가 없어서, 주소가 어느 subjectId인지는 운영 쪽이 주는 대응표 xdr/subject-map.json으로 받는다.
 //   { "schema": "aleph.xdr.subject-map.v1", "entries": [ { "sourceIp": "203.0.113.10", "subjectId": "..." } ] }
@@ -124,7 +126,72 @@ function buildBlockRules(items, { now, ttlMinutes, existing, subjectMap }) {
   return { rules: [...byIp.values()], skipped };
 }
 
-export async function respond({ root = defaultRoot, now = new Date(), ttlMinutes, askConfidence, warn = () => {} } = {}) {
+// ---- 애매한 경보에 Jev의 확신도를 받는 부분(문서: https://docs.typesafe.ai, api.md·primitives/noul.md) ----
+// Noul(예/아니오) 질문의 응답 noul(0~1)이 "공격일 확률"이다. 키는 환경변수에서만 읽고 코드·로그·반환값에 넣지 않는다.
+const JEV_URL = 'https://api.typesafe.ai/v1/systemone';
+const JEV_MODEL = 'jev-latest';
+const JEV_QUESTION = 'is_brute_force';
+const JEV_INSTRUCTIONS = 'Is this login alert part of a real brute-force attack (repeated failed logins in a short time from one source, '
+  + 'password spraying across many accounts, or rotating usernames)? Answer high only for an attack.';
+const JEV_CRITERIA = {
+  true: 'Many failed logins accumulate quickly from one source, or the same attempt is repeated across many accounts.',
+  false: 'A few failed logins by an ordinary user (typo, password change, lockout retry), or a normal event such as a successful login.',
+};
+const ASK_TIMEOUT_MS = 3000;
+const AMBIGUOUS = /^애매 · (.*) · 확신도를 받지 못해 alert$/u;
+const actionFor = (confidence) => (confidence >= BLOCK_AT ? 'block' : confidence >= 0.5 ? 'alert' : 'record');
+
+async function askJev(payload, timeoutMs) {
+  const key = process.env.TYPESAFE_API_KEY;
+  if (typeof key !== 'string' || !key.trim()) return null;
+  const response = await fetch(JEV_URL, {
+    method: 'POST',
+    redirect: 'error',
+    headers: { Authorization: `Bearer ${key.trim()}`, 'Content-Type': 'application/json' },
+    // 보내는 것은 뽑은 다섯 값(비밀값은 가려짐)과 가까운 패턴 설명뿐이다. 원본 경보 전체는 보내지 않는다.
+    body: JSON.stringify({
+      state: {
+        timestamp: payload.row.timestamp, source_ip: payload.row.srcip, account: payload.row.srcuser,
+        rule_level: payload.row.level, description: payload.row.description, nearest_pattern: payload.nearPattern,
+      },
+      model: JEV_MODEL,
+      questions: { [JEV_QUESTION]: { type: 'noul', instructions: JEV_INSTRUCTIONS, criteria: JEV_CRITERIA } },
+    }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) return null;
+  const answer = (await response.json())?.answers?.[JEV_QUESTION];
+  return answer?.type === 'noul' ? answer.noul : null;
+}
+
+// 함수가 없거나, 늦거나, 오류가 나거나, 0~1 숫자가 아니면 null(= 응답 없음).
+async function askConfidenceOf(ask, payload, timeoutMs) {
+  if (typeof ask !== 'function') return null;
+  let timer;
+  try {
+    const answer = await Promise.race([
+      Promise.resolve().then(() => ask(payload)),
+      new Promise((resolveTimer) => { timer = setTimeout(() => resolveTimer(null), timeoutMs); }),
+    ]);
+    return typeof answer === 'number' && Number.isFinite(answer) && answer >= 0 && answer <= 1 ? answer : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// decide가 "애매 → alert(0.5)"로 답한 경보만 Jev에게 묻는다. 명확한 공격(block)과 정상(record)은 묻지 않는다.
+async function refineAmbiguous(decision, row, { askConfidence, timeoutMs = ASK_TIMEOUT_MS }) {
+  const hint = AMBIGUOUS.exec(decision.reason)?.[1];
+  if (decision.action !== 'alert' || hint === undefined) return decision;
+  const ask = askConfidence ?? ((payload) => askJev(payload, timeoutMs));
+  const asked = await askConfidenceOf(ask, { row, nearPattern: hint }, timeoutMs);
+  if (asked === null) return decision;
+  return { action: actionFor(asked), confidence: asked, reason: `애매 · ${hint} · 받은 확신도 ${asked}`.slice(0, 140) };
+}
+
+export async function respond({ root = defaultRoot, now = new Date(), ttlMinutes, askConfidence, timeoutMs, warn = () => {} } = {}) {
   const fixture = JSON.parse(await readFile(join(root, 'xdr', 'fixtures', 'brute-force.json'), 'utf8'));
   if (fixture?.schema !== 'aleph.xdr.fixture.v1' || fixture.moduleKey !== 'brute-force' || !Array.isArray(fixture.alerts)) {
     throw new Error('brute-force 경보 묶음 형식이 아닙니다.');
@@ -133,7 +200,7 @@ export async function respond({ root = defaultRoot, now = new Date(), ttlMinutes
   const items = [];
   for (const alert of fixture.alerts) {
     const row = extractRow(alert);
-    const decision = await decide(alert, { askConfidence });
+    const decision = await refineAmbiguous(await decide(alert), row, { askConfidence, timeoutMs });
     items.push({
       alertId: typeof alert?.id === 'string' ? alert.id : null,
       srcip: row.srcip, srcuser: row.srcuser,
@@ -170,7 +237,7 @@ export async function respond({ root = defaultRoot, now = new Date(), ttlMinutes
   const counts = { block: 0, alert: 0, record: 0 };
   for (const item of items) counts[item.action] += 1;
   const active = rules.filter((rule) => isActive(rule, now));
-  return { total: items.length, counts, ruleCount: active.length, appliedToDecider: active.filter((rule) => rule.subjectIds.length).length, skipped, logged: lines.length, rules };
+  return { total: items.length, counts, ruleCount: active.length, appliedToDecider: active.filter((rule) => rule.subjectIds.length).length, skipped, logged: lines.length, rules, items };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
