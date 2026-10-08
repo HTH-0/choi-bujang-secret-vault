@@ -1,0 +1,68 @@
+{
+  "schema": "aleph.xdr.patterns.v1",
+  "moduleKey": "brute-force",
+  "basis": {
+    "technique": "T1110",
+    "name": "Brute Force",
+    "source": "https://attack.mitre.org/techniques/T1110/",
+    "retrievedAt": "2026-10-07",
+    "note": "근거 문장은 공식 페이지의 탐지 항목을 한국어로 줄여 쓴 것입니다. 원문 그대로가 아니므로 출처 페이지에서 직접 확인하세요."
+  },
+  "caveat": "ATT&CK는 건수·시간 같은 숫자 기준을 정하지 않습니다. 이 파일에는 숫자 기준을 넣지 않았고, 기준은 판정 코드가 경보 값을 보고 따로 정해야 합니다.",
+  "patterns": [
+    {
+      "id": "same_source_failure_burst",
+      "name": "같은 주소의 로그인 실패 연속",
+      "technique": "T1110.001",
+      "condition": "같은 출발 주소(data.srcip)에서 같은 계정 또는 비슷한 계정을 겨냥한 로그인 실패가 짧은 시간에 연속으로 쌓인다.",
+      "fields": ["data.srcip", "data.srcuser", "data.count", "rule.description", "timestamp"],
+      "evidence": "T1110.001 탐지: 같은 또는 비슷한 계정을 겨냥한 로그인 실패 연속 사건이 하나 이상의 원격 IP에서 시간에 걸쳐 나타나는지 감시한다.",
+      "source": "https://attack.mitre.org/techniques/T1110/001/",
+      "fixtureExamples": ["bf-01", "bf-04", "bf-06"],
+      "notes": "bf-08, bf-10은 실패 건수가 매우 크지만 설명에 시간 창이 없어 예시에서 뺐습니다."
+    },
+    {
+      "id": "password_spraying_many_accounts",
+      "name": "여러 계정에 같은 비밀번호 대입",
+      "technique": "T1110.003",
+      "condition": "같은 출발 주소에서 하나(또는 소수)의 비밀번호를 서로 다른 여러 계정에 시도해 로그인 실패가 정해진 시간 안에 몰린다.",
+      "fields": ["data.srcip", "data.accounts", "data.count", "rule.description", "timestamp"],
+      "evidence": "T1110.003 탐지: 하나의 비밀번호(또는 소수)로 서로 다른 많은 계정에 인증 실패가 정해진 시간 창 안에 몰리는지, 같은 출발 IP에서 보는지 감시한다.",
+      "source": "https://attack.mitre.org/techniques/T1110/003/",
+      "fixtureExamples": ["bf-02", "bf-09"],
+      "notes": "bf-05는 계정 20개에 같은 간격으로 실패했지만 설명에 같은 비밀번호라는 말이 없어 예시에서 뺐습니다."
+    },
+    {
+      "id": "rotating_usernames_burst",
+      "name": "계정 이름을 바꿔 가며 실패가 몰림",
+      "technique": "T1110.004",
+      "condition": "같은 출발 주소에서 짧은 시간에 사용자 이름을 바꿔 가며 로그인 실패가 연달아 쌓인다.",
+      "fields": ["data.srcip", "data.srcuser", "data.count", "rule.description", "timestamp"],
+      "evidence": "T1110.004 탐지: 한 IP나 세션에서 짧은 시간에 서로 다른 사용자 이름·비밀번호 쌍으로 인증 실패가 몰리고 사용자 이름이 바뀌는지 감시한다.",
+      "source": "https://attack.mitre.org/techniques/T1110/004/",
+      "fixtureExamples": ["bf-03"],
+      "notes": "이 경보에는 유출된 자격 증명을 썼다는 정보가 없어 크리덴셜 스터핑으로 단정하지 않고, 사용자 이름이 바뀌며 몰리는 모양만 조건으로 삼았습니다."
+    },
+    {
+      "id": "many_failures_then_success",
+      "name": "많은 실패 뒤에 성공",
+      "technique": "T1110",
+      "condition": "같은 주소 또는 같은 계정에서 로그인 실패가 많이 이어진 뒤 성공 사건이 나온다.",
+      "fields": ["data.srcip", "data.srcuser", "data.count", "rule.description", "timestamp"],
+      "evidence": "T1110 탐지: 의심스러운 사용자·호스트·시간대에서 많은 로그온 실패 뒤에 성공이 이어지는지, 같은 IP나 사용자에서 실패 뒤 성공이 나오는지 감시한다.",
+      "source": "https://attack.mitre.org/techniques/T1110/",
+      "fixtureExamples": [],
+      "notes": "이 연습 경보에는 실패가 많은 뒤 성공한 사례가 없습니다. 실패 4~6건 뒤 성공(bf-11, bf-12, bf-17)은 실패 건수가 많지 않아 이 패턴으로 보지 않고 애매한 시도로 남겨 두었습니다."
+    }
+  ],
+  "excluded": [
+    {
+      "technique": "T1110.002",
+      "reason": "비밀번호 해시를 오프라인에서 푸는 방식이라 로그인 실패 경보에 나타나지 않습니다."
+    },
+    {
+      "item": "bf-07 비밀번호를 한 글자씩 바꿔 넣는 실패",
+      "reason": "공식 페이지에서 이 모양을 따로 설명한 근거를 확인하지 못해 패턴으로 넣지 않았습니다."
+    }
+  ]
+}
