@@ -121,6 +121,16 @@
 
 로컬에서 가상 화면만 확인할 때는 `npm run build -- --local`을 사용합니다. 로컬 실행은 Vercel 배포나 심판 접수를 증명하지 않습니다. 저장소의 `src/attack-check.mjs`는 실제 배포가 된 뒤 현재 단계의 요청을 비로그인으로 보냅니다. 1단계에서는 `/data.json`의 확인 표시를 읽고, 3단계에서는 로그인 없는 자료 요청이 거부되는지 봅니다.
 
+## 보너스 XDR 판단 모듈
+
+경보는 수업용 가상 Wazuh 경보(`xdr/fixtures/`)이고, 판단은 파일 하나(`decide.mjs`)가 인터넷 없이 혼자 합니다.
+
+- 무차별 로그인: `xdr/brute-force/` (패턴 4개, T1110)
+- 웹 주입: `xdr/web-injection/` (패턴 2개 — SQL 구문, `../` 반복, T1190). 스크립트 태그는 근거를 확인하지 못해 뺐습니다.
+- 다시 실행: `npm run xdr:run -- brute-force` 또는 `npm run xdr:run -- web-injection` → 각 폴더의 `result.json`
+- 연결: `node xdr/<모듈>/respond.mjs`가 block만 만료 시각·근거 경보 번호가 있는 거부 규칙으로 쓰고, block·alert는 `xdr/alerts.log`에 쌓습니다. 판정기(`src/decider.mjs`)가 읽지만, 출발 주소를 주체로 바꾸는 `xdr/subject-map.json`이 없으면 실제로 적용되는 주체는 없습니다.
+- 확신도 기준(0.85 이상 block, 0.5 이상 alert)은 과제가 정했고, 건수·수준 같은 숫자 기준은 연습 경보를 보고 제가 정한 값이며 ATT&CK가 정한 값이 아닙니다.
+
 ## 다음 단계의 코딩 도구에 전달할 규칙
 
 [AGENTS.md](AGENTS.md)를 먼저 읽히고 한 번에 한 제작 단위만 요청하세요. 2단계부터는 자료 보호를 구현할 때 `public/data.json`을 복사하는 1단계 빌드 흐름도 함께 바꿔야 합니다. 3단계 이후의 로그인, 허용 경로, 5단계의 원본 API 주소, 6단계 이후 정책 규칙은 해당 단계 원고와 계약에 맞춰 추가합니다. 비밀번호·토큰·서버 전용 키·실제 학생 기록을 코드, Git, 제출 묶음에 넣지 않습니다.
