@@ -1,11 +1,14 @@
 // 로그인한 사용자의 가상 메모 목록(GET)과 추가(POST).
 // 4단계: 목록은 DB의 owner_id가 서버가 검증한 사용자 ID와 같은 행만 준다.
 // 추가할 때 owner_id는 서버가 검증한 사용자 ID로만 채운다. URL·본문·쿼리가 보낸 값은 쓰지 않는다.
-import { guard, isOwner, isUuid, readFields, readJson, rest, toNote } from '../src/notes-api.mjs';
+import {
+  authorize, denyReason, guard, isUuid, readFields, readJson, requireNoteResource, resourceIdForRoute, rest, toNote,
+} from '../src/notes-api.mjs';
 
 export default async function handler(request, response) {
-  const login = await guard(request, response, ['GET', 'POST']);
+  const login = await guard(request, response, ['GET', 'POST'], resourceIdForRoute('/api/notes'));
   if (!login) return;
+  if (!requireNoteResource(login, request, response)) return;
   try {
     if (request.method === 'GET') {
       // 로그인 사용자 본인의 메모만 목록으로 준다.
@@ -16,7 +19,9 @@ export default async function handler(request, response) {
       const rows = await upstream.json();
       if (!Array.isArray(rows)) return response.status(502).json({ error: 'UPSTREAM_ERROR' });
       // DB 조건에 더해 응답 직전에도 소유자를 한 번 더 비교한다.
-      return response.status(200).json(rows.filter((row) => isOwner(row, login.userId)).map(toNote));
+      const mine = rows.filter((row) => authorize(login, row).ok);
+      if (mine.length !== rows.length) denyReason('not_owner', login, request);
+      return response.status(200).json(mine.map(toNote));
     }
     const input = readJson(request);
     const fields = input && readFields(input, { required: true });

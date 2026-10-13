@@ -10,6 +10,28 @@
 
 배포가 끝나면 `/`에서 점령된 가상 자료실을 볼 수 있습니다. 시작 틀에서는 `/data.json`에 같은 가상 메모가 공개됩니다. 이 공개 상태를 확인하는 것이 1단계의 출발점입니다. 1단계 접수와 심판 판정은 포털에서 확인합니다.
 
+## 8단계 현황: 자료마다 갈 수 있는 구역을 나눕니다
+
+- `aleph.config.json`의 `step`을 8로 올렸습니다. 빌드(`scripts/build-public.mjs`)와 배포 식별(`scripts/deployment-identity.mjs`)과 `src/attack-check.mjs`가 `step` 8을 받도록 허용 단계에 8을 추가했습니다. 이 셋이 8을 받지 않으면 Vercel 빌드가 멈춥니다.
+- `src/attack-check.mjs`에 점검 `direct_api_other_zone`을 **미실행**으로 기록합니다. 이 스크립트는 두 계정의 로그인 토큰을 가질 수 없습니다.
+- 다시 실행하는 방법: `npm run build -- --local`, `npm run test:r5`, `npm run decider:test`, 커밋 뒤 `npm run bundle`.
+
+- 자원 ID 두 개를 `src/notes-api.mjs`의 `RESOURCE_IDS`에 정했습니다. 메모는 `vault.note`, 강사 공지는 `vault.instructor_notice`입니다. 경로 모양을 ID로 바꾸는 `resourceIdForRoute()`는 `/api/notes`와 `/api/notes/:id`를 `vault.note`로 바꾸고, 표에 없는 경로는 `null`을 돌려줍니다. 기본값으로 채우지 않습니다.
+- `guard()`가 요청마다 `{ userId, resourceId }`를 돌려줍니다. ID는 두 핸들러(`api/notes.js`, `api/notes/[id].js`)가 서버 코드에서 정해 넘기며, 요청의 헤더·쿼리·본문이 보낸 값은 읽지 않습니다. 응답 모양과 응답 헤더, 주소, 화면은 바꾸지 않았습니다.
+- **강사 공지는 ID만 예약했습니다.** 이 저장소에는 강사 공지의 자료도 주소도 없으므로, `vault.instructor_notice`를 쓰는 경로는 아직 없습니다. 공지를 실제로 보여 주려면 별도의 자료와 주소가 필요하며 이번 요청에 넣지 않았습니다.
+
+**8단계에서 확인한 것과 하지 않은 것**
+- 확인함(제가 가짜 DB와 시험용 서명 키로 한 로컬 시험, 심판 판정 아님): 두 경로의 요청이 모두 `vault.note`로 구별됩니다. 위조한 `X-Resource-Id: vault.instructor_notice` 헤더와 `?resourceId=` 쿼리는 무시되고, 표에 없는 ID와 ID를 넘기지 않은 경우는 `null`입니다. 기존 응답(목록·한 건 `{id,title,body}`, 추가 `{id}`, 로그인 없는 요청 401)은 그대로이고 응답 헤더에 ID가 나오지 않습니다. `npm run test:r5`와 `npm run decider:test`도 통과했습니다.
+- **미확인**: 심판이 자원 ID를 어디서 읽는지(응답, `/aleph.json`, 판정 요청 등)는 8단계 카드의 계약을 보지 못해 알 수 없습니다. 판정 요청 계약(`docs/DECIDER_REQUEST.md`)의 18개 항목에는 자원 ID가 없으므로 판정기는 이번에 바꾸지 않았습니다.
+- **미실행**: 실제 배포 주소에서 로그인한 요청으로 확인하지 않았습니다.
+
+**8단계 API 재대조: 자원과 소유자를 다시 확인합니다**
+- `src/notes-api.mjs`에 `authorize(login, row)`를 추가했습니다. 허용 조건은 "자원 ID가 `vault.note`이고, 행의 `owner_id`가 서버가 검증한 사용자 ID와 같을 때"뿐입니다. 두 핸들러는 기존 `isOwner` 비교 자리(목록 필터, 한 건 읽기, 쓰기 응답 직후)에서 `authorize`를 호출하고, 로그인 직후에는 `requireNoteResource()`가 자원 ID를 한 번 더 확인해서 `vault.note`가 아니면 403 `FORBIDDEN`으로 거부합니다. 지금 경로로는 도달하지 않는 방어입니다.
+- **강사 권한은 아무에게도 주지 않습니다.** 저장된 근거(테이블·칼럼·설정)가 이 저장소에 없고, 로그인 토큰의 `aleph_role: 'judge'`는 심판 토큰 표시라서 강사 권한으로 쓰지 않습니다. 화면 메뉴와 요청의 본문·헤더·쿼리에 있는 `role`은 읽지 않습니다.
+- 거부 사유는 서버 로그에 한 줄로 남습니다: `{"event":"access_denied","reason":"not_owner"|"resource_not_allowed","resource":"…","method":"…"}`. 사용자 ID, 토큰, 메모 내용은 적지 않습니다. 응답 본문과 상태 코드는 바꾸지 않았습니다(남의 메모는 기존대로 404).
+- 확인함(제가 가짜 DB와 시험용 서명 키로 한 로컬 시험, 심판 판정 아님): 메뉴를 거치지 않고 B가 A의 메모를 목록·한 건·수정·삭제로 직접 요청하면 모두 자료 없이 거부되고(404) A의 자료는 바뀌지 않습니다. 본문 `role`, 헤더 `X-Role`, 쿼리 `?role=instructor`를 붙여도 결과가 같습니다. DB가 남의 행을 돌려주는 최악의 경우에도 응답에서 걸러지고 사유 `not_owner`가 로그에 남습니다. A의 정상 동작(목록·읽기·수정·삭제·추가)과 로그인 없는 요청의 401은 그대로이고, `npm run test:r5`와 `npm run decider:test`도 통과했습니다.
+- **미실행**: 실제 배포 주소에서 두 계정으로 직접 요청한 확인은 하지 않았습니다. 강사 권한을 실제로 쓰려면 저장된 역할(DB 등)이 먼저 있어야 합니다.
+
 ## 7단계 현황: 평소와 다른 접속은 다시 확인합니다
 
 - `aleph.config.json`의 `step`을 7로 올렸습니다. 빌드(`scripts/build-public.mjs`)와 배포 식별(`scripts/deployment-identity.mjs`)과 `src/attack-check.mjs`가 `step` 7을 받도록 허용 단계에 7을 추가했습니다. 이 셋이 7을 받지 않으면 Vercel 빌드가 멈춥니다.

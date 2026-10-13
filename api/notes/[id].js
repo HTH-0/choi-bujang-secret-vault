@@ -2,12 +2,14 @@
 // 4단계: 모든 동작에서 DB 행의 owner_id가 서버가 검증한 사용자 ID와 같을 때만 허용한다.
 // URL·본문·쿼리의 owner_id/userId는 믿지 않는다. 남의 메모는 없는 메모처럼 404로 답한다.
 import {
-  guard, isOwner, isUuid, readFields, readJson, rest, toNote, triesToChangeOwner,
+  authorize, denyReason, guard, isUuid, readFields, readJson, requireNoteResource, resourceIdForRoute, rest, toNote,
+  triesToChangeOwner,
 } from '../../src/notes-api.mjs';
 
 export default async function handler(request, response) {
-  const login = await guard(request, response, ['GET', 'PUT', 'DELETE']);
+  const login = await guard(request, response, ['GET', 'PUT', 'DELETE'], resourceIdForRoute('/api/notes/:id'));
   if (!login) return;
+  if (!requireNoteResource(login, request, response)) return;
   const id = request.query?.id;
   // 올바른 UUID가 아니면 조회하지 않고 없는 메모로 취급한다.
   if (!isUuid(id)) return response.status(404).json({ error: 'NOT_FOUND' });
@@ -18,7 +20,9 @@ export default async function handler(request, response) {
     if (!found.ok) return response.status(502).json({ error: 'UPSTREAM_ERROR' });
     const existing = await found.json();
     if (!Array.isArray(existing)) return response.status(502).json({ error: 'UPSTREAM_ERROR' });
-    if (!existing.length || !isOwner(existing[0], login.userId)) {
+    const verdict = existing.length ? authorize(login, existing[0]) : { ok: false };
+    if (!verdict.ok) {
+      if (verdict.reason) denyReason(verdict.reason, login, request);
       return response.status(404).json({ error: 'NOT_FOUND' });
     }
     if (request.method === 'GET') return response.status(200).json(toNote(existing[0]));
@@ -46,7 +50,11 @@ export default async function handler(request, response) {
     if (!upstream.ok) return response.status(502).json({ error: 'UPSTREAM_ERROR' });
     const rows = await upstream.json();
     if (!Array.isArray(rows)) return response.status(502).json({ error: 'UPSTREAM_ERROR' });
-    if (!rows.length || !isOwner(rows[0], login.userId)) return response.status(404).json({ error: 'NOT_FOUND' });
+    const written = rows.length ? authorize(login, rows[0]) : { ok: false };
+    if (!written.ok) {
+      if (written.reason) denyReason(written.reason, login, request);
+      return response.status(404).json({ error: 'NOT_FOUND' });
+    }
     return response.status(200).json(request.method === 'DELETE' ? { id: rows[0].id } : toNote(rows[0]));
   } catch {
     return response.status(502).json({ error: 'UPSTREAM_ERROR' });
