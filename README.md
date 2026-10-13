@@ -10,6 +10,22 @@
 
 배포가 끝나면 `/`에서 점령된 가상 자료실을 볼 수 있습니다. 시작 틀에서는 `/data.json`에 같은 가상 메모가 공개됩니다. 이 공개 상태를 확인하는 것이 1단계의 출발점입니다. 1단계 접수와 심판 판정은 포털에서 확인합니다.
 
+## 7단계 현황: 평소와 다른 접속은 다시 확인합니다
+
+- `aleph.config.json`의 `step`을 7로 올렸습니다. 빌드(`scripts/build-public.mjs`)와 배포 식별(`scripts/deployment-identity.mjs`)과 `src/attack-check.mjs`가 `step` 7을 받도록 허용 단계에 7을 추가했습니다. 이 셋이 7을 받지 않으면 Vercel 빌드가 멈춥니다.
+- `src/attack-check.mjs`에 점검 `unusual_access_step_up`을 **미실행**으로 기록합니다. 이 스크립트는 엔진이 보내는 `stepUp`과 재인증 화면을 만들 수 없습니다.
+- 다시 실행하는 방법: `npm run fixture:7`(정상 `allow`, 복합 이상 `step_up`), `npm run decider:test`(네 항목 통과), `npm run test:r5`, 커밋 뒤 `npm run bundle`.
+
+- `src/decider.mjs`에 입력 검사 함수 `readConnectionInfo`와 규칙 `step_up_required`를 추가했습니다. 계약([docs/DECIDER_REQUEST.md](docs/DECIDER_REQUEST.md))에 있는 `signals`·`recentEvents`·`stepUp`만 읽고, 출처를 `none`·`judge_fixture`·`unknown`으로 구분합니다. 없거나 출처가 불명확한 값은 `null`로 두고 정상값으로 채우지 않으며, `headers`·`geo`·`device`·`role` 같은 계약 밖 항목은 읽지 않습니다.
+- 규칙은 등록 기기의 자료실 읽기에서 평소와 다른 시각(0~5시, 23시), `network`가 `unusual`, 최근 5분 안의 `risk_signal` 10건 이상이 **모두** 있을 때 `step_up`/`step_up_required`를 돌려줍니다. 지역은 조건이 아니며 지역만으로는 추가 확인도 차단도 하지 않습니다. 숫자 기준은 연습 요청을 보고 제가 정한 값이며 계약이 정한 값이 아닙니다.
+- 다시 로그인한 시각의 계약: 요청의 `stepUp`(`verified`, `authAgeSeconds` 0~900초)이 전부입니다. 판정기는 `verified`가 `true`이고 나이가 0~900초일 때만 확인된 것으로 보고, 그 밖(901초, `null`, 문자열 `'true'`, 항목 없음)은 확인 전으로 봅니다. 확인 전의 복합 이상 요청은 `step_up`, 새 로그인 뒤의 새 요청은 요청마다 다시 판정해 `allow`가 나옵니다. 판정기는 상태를 저장하지 않습니다.
+
+**7단계에서 확인한 것과 하지 않은 것**
+- 확인함(제가 가상 요청으로 한 로컬 시험, 심판 판정 아님): `npm run fixture:7`(정상 `allow`, 복합 이상 `step_up`)과 `npm run decider:test` 네 항목이 통과했습니다. 다시 로그인 전 두 번은 `step_up`, 5초·900초 뒤의 새 요청은 `allow`, 901초·`null`·문자열·항목 없음은 `step_up`이었습니다. 미등록 기기와 쓰기 요청은 다시 로그인해도 거부됩니다.
+- **미실행**: 실제 자료 차단과 새 로그인 뒤 허용은 실측하지 않았습니다. 이 저장소에는 엔진·릴레이 코드가 없고, 서버 함수(`api/`)는 판정기를 호출하지 않으며, 제가 엔진이 보내는 실제 `stepUp`을 받을 수 없기 때문입니다. 계약이 준비된 환경에서 엔진이 `step_up`을 받아 재인증 화면으로 보내고 새 요청에 `verified: true`를 채워 주는 흐름을 확인한 뒤에만 실측으로 적습니다.
+- **미확인**: 계약에는 "같은 내 로그인"으로 다시 로그인했는지 비교하는 항목이 없습니다(`stepUp`에 주체 정보가 없음). 같은 사용자인지는 엔진이 보증해야 하며 판정기는 확인할 수 없습니다. 또 문서의 "이 값만 보고 재인증 확인 요청을 건너뛰지 않습니다" 문장과 로컬 연습(유효한 `stepUp`이면 `allow`)의 관계는 심판 기준을 확인하지 못했습니다.
+- 실제 경로의 `source: "none"` 요청은 시각·네트워크가 `null`이라 이 규칙이 켜지지 않습니다. 토큰 원문은 코드·시험 출력·이 문서에 기록하지 않았습니다.
+
 ## 6단계 현황: 등록한 기기만 자료실에 들어옵니다
 
 - `src/decider.mjs`에 규칙 `device_registered`를 하나 추가했고 `RULE_IDS`에도 적었습니다. 판정 순서는 다음과 같습니다. 먼저 보너스 XDR 차단 규칙을 검사합니다. 다음으로 `request.deviceRegistered`가 `true`가 아니면(`false`, 값 없음, 문자열 `'true'` 같은 다른 값) `deny`와 이유 코드 `device_not_registered`로 거부합니다. 등록 기기가 내 자료실을 읽는 요청만(`service`가 `notes`이고, `method`가 `GET`이고, `route`가 `GET /notes`·`GET /notes/:id`·`GET /api/notes`·`GET /api/notes/:id` 중 하나) `allow`와 이유 코드 `approved`로 허용합니다. 등록 기기의 쓰기 요청(`POST`·`PUT`·`DELETE`)과 다른 서비스·다른 경로의 요청은 기존 기본 규칙 `starter.deny`가 거부합니다. 심판이 `S06_DEVICE_RULE_MISSING`을 낸 뒤, 카드의 "로그인·기기 등록 여부·동작·경로" 기준에 맞추려고 허용 조건에 서비스와 경로를 추가했습니다.
