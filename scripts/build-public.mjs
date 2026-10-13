@@ -14,6 +14,15 @@ if (!Array.isArray(data.notes)) {
   throw new Error('실습용 공개 자료 형식을 확인하세요. 실제 학생 자료를 넣으면 안 됩니다.');
 }
 await mkdir(resolve(root, 'public'), { recursive: true });
+// 11단계: 로그인 라이브러리(supabase-js, 설치된 버전 그대로)를 외부 CDN이 아니라 우리 서버의 /vendor/supabase.js로 쓴다.
+// 외부 인터넷이 막히거나 멈춘 환경에서도 화면이 끝까지 열리게 하고, 제3자 서버에서 코드를 내려받지 않기 위해서다. 복사하지 못하면 빌드를 멈춘다.
+try {
+  await mkdir(resolve(root, 'public', 'vendor'), { recursive: true });
+  await copyFile(resolve(root, 'node_modules', '@supabase', 'supabase-js', 'dist', 'umd', 'supabase.js'),
+    resolve(root, 'public', 'vendor', 'supabase.js'));
+} catch {
+  throw new Error('로그인 라이브러리(node_modules/@supabase/supabase-js/dist/umd/supabase.js)를 복사하지 못했습니다. npm install을 먼저 실행하세요.');
+}
 if (config.step === 1) {
   await copyFile(source, output);
   console.log('실습용 공개 자료를 public/data.json에 복사했습니다.');
