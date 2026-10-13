@@ -16,6 +16,13 @@
 - `src/attack-check.mjs`에 점검 `direct_api_other_zone`을 **미실행**으로 기록합니다. 이 스크립트는 두 계정의 로그인 토큰을 가질 수 없습니다.
 - 다시 실행하는 방법: `npm run build -- --local`, `npm run test:r5`, `npm run decider:test`, 커밋 뒤 `npm run bundle`.
 
+**8단계 심판 결과 뒤 수정: 판정기가 메모 전체 목록 경로를 열어 두고 있었습니다**
+- 심판 결과(커밋 `6d7970f`, 48/100점, 조건 「구역 규칙」, 기록 코드 `S08_OTHER_ZONE_ALLOWED`)는 판정기가 반 공지·강사 자료의 쓰기를 허용하거나 메모 전체 목록 경로를 열어 두는 경우라고 설명했습니다. 가상 요청으로 재현하니 공지·강사 자료의 쓰기(`POST`·`PUT`·`PATCH`·`DELETE`)는 이미 거부였고, **`GET /notes`·`GET /api/notes`(목록)가 `allow`**였습니다.
+- `src/decider.mjs`의 허용 조건을 `GET /notes/:id`·`GET /api/notes/:id`(한 건)로만 좁혔습니다(정규식에서 `:id`를 필수로 함). 목록, 목록 변형(`/notes/`, `/notes/all`), 쿼리가 붙은 목록, 공지 쓰기, 메모 쓰기, 강사 자료는 모두 `deny`/`starter_not_ready`입니다. 한 건의 주인 비교는 API가 하므로 판정기에는 넣지 않았습니다. 기기 규칙, 7단계 추가 확인 규칙, XDR 규칙은 그대로입니다.
+- 확인함(제가 가상 요청으로 한 로컬 시험, 심판 판정 아님): 위 요청 18종의 판정과 `npm run decider:test` 네 항목, `npm run fixture:7`, `npm run test:r5`가 통과했고, 파일 하나만 열 수 있는 환경에서도 열렸습니다.
+- 앱 동작: 서버 함수(`api/`)는 판정기를 호출하지 않으므로 화면의 목록 표시는 그대로입니다. 엔진이 목록 요청을 판정기로 보내는 환경이라면 목록이 거부됩니다.
+- **미확인**: 심판이 보내는 "메모 전체 목록" 요청의 `route` 모양과, 이 수정으로 점수가 오르는지는 재제출 결과를 봐야 합니다.
+
 - 자원 ID 두 개를 `src/notes-api.mjs`의 `RESOURCE_IDS`에 정했습니다. 메모는 `vault.note`, 강사 공지는 `vault.instructor_notice`입니다. 경로 모양을 ID로 바꾸는 `resourceIdForRoute()`는 `/api/notes`와 `/api/notes/:id`를 `vault.note`로 바꾸고, 표에 없는 경로는 `null`을 돌려줍니다. 기본값으로 채우지 않습니다.
 - `guard()`가 요청마다 `{ userId, resourceId }`를 돌려줍니다. ID는 두 핸들러(`api/notes.js`, `api/notes/[id].js`)가 서버 코드에서 정해 넘기며, 요청의 헤더·쿼리·본문이 보낸 값은 읽지 않습니다. 응답 모양과 응답 헤더, 주소, 화면은 바꾸지 않았습니다.
 - **강사 공지는 ID만 예약했습니다.** 이 저장소에는 강사 공지의 자료도 주소도 없으므로, `vault.instructor_notice`를 쓰는 경로는 아직 없습니다. 공지를 실제로 보여 주려면 별도의 자료와 주소가 필요하며 이번 요청에 넣지 않았습니다.
@@ -50,7 +57,7 @@
 
 ## 6단계 현황: 등록한 기기만 자료실에 들어옵니다
 
-- `src/decider.mjs`에 규칙 `device_registered`를 하나 추가했고 `RULE_IDS`에도 적었습니다. 판정 순서는 다음과 같습니다. 먼저 보너스 XDR 차단 규칙을 검사합니다. 다음으로 `request.deviceRegistered`가 `true`가 아니면(`false`, 값 없음, 문자열 `'true'` 같은 다른 값) `deny`와 이유 코드 `device_not_registered`로 거부합니다. 등록 기기가 내 자료실을 읽는 요청만(`service`가 `notes`이고, `method`가 `GET`이고, `route`가 `GET /notes`·`GET /notes/:id`·`GET /api/notes`·`GET /api/notes/:id` 중 하나) `allow`와 이유 코드 `approved`로 허용합니다. 등록 기기의 쓰기 요청(`POST`·`PUT`·`DELETE`)과 다른 서비스·다른 경로의 요청은 기존 기본 규칙 `starter.deny`가 거부합니다. 심판이 `S06_DEVICE_RULE_MISSING`을 낸 뒤, 카드의 "로그인·기기 등록 여부·동작·경로" 기준에 맞추려고 허용 조건에 서비스와 경로를 추가했습니다.
+- `src/decider.mjs`에 규칙 `device_registered`를 하나 추가했고 `RULE_IDS`에도 적었습니다. 판정 순서는 다음과 같습니다. 먼저 보너스 XDR 차단 규칙을 검사합니다. 다음으로 `request.deviceRegistered`가 `true`가 아니면(`false`, 값 없음, 문자열 `'true'` 같은 다른 값) `deny`와 이유 코드 `device_not_registered`로 거부합니다. 등록 기기가 메모 한 건을 읽는 요청만(`service`가 `notes`이고, `method`가 `GET`이고, `route`가 `GET /notes/:id` 또는 `GET /api/notes/:id`). 메모 전체 목록 경로는 8단계 심판 기록 `S08_OTHER_ZONE_ALLOWED` 뒤에 허용에서 뺐습니다 `allow`와 이유 코드 `approved`로 허용합니다. 등록 기기의 쓰기 요청(`POST`·`PUT`·`DELETE`)과 다른 서비스·다른 경로의 요청은 기존 기본 규칙 `starter.deny`가 거부합니다. 심판이 `S06_DEVICE_RULE_MISSING`을 낸 뒤, 카드의 "로그인·기기 등록 여부·동작·경로" 기준에 맞추려고 허용 조건에 서비스와 경로를 추가했습니다.
 - 심판이 두 번 연속 `S06_DEVICE_RULE_MISSING`을 냈습니다(커밋 `79c9e53`, `e969626`). 허용 범위를 좁혀도 같은 코드가 나와서, 두 버전의 공통점인 `src/decider.mjs` 맨 위의 `import { readFileSync } from 'node:fs'`를 원인 후보로 보았습니다. 이 파일만 따로 불러오는 환경에서는 그 줄 때문에 파일이 열리지 않습니다. 그래서 `import` 문을 없애고 `process.getBuiltinModule`로 XDR 규칙 파일을 읽을 때만 `node:fs`를 얻게 했습니다. XDR 규칙과 `RULE_IDS`는 그대로입니다. 이 원인은 아직 가정이며, 재제출 결과로 확인합니다.
 - 요청 계약([docs/DECIDER_REQUEST.md](docs/DECIDER_REQUEST.md))에 있는 `deviceRegistered`와 `method`만 읽습니다. `request.device`, `request.identity`, `request.geo`, `request.role`은 계약에 없으므로 쓰지 않습니다. 응답은 항목 다섯 개(`schema`, `requestId`, `decision`, `reasonCode`, `ruleIds`)입니다.
 - 이 과정에는 따로 설치할 접속 프로그램이 없습니다. 설치 명령은 필요하지 않습니다. 미등록 기기로 접속을 시도하는 공격은 심판이 맡습니다.

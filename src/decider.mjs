@@ -91,9 +91,9 @@ export async function decide(request) {
       ruleIds: [RULE_IDS[3]],
     };
   }
-  // 등록 기기가 내 자료실(notes 서비스의 목록·한 건)을 읽는 GET만 허용한다. 쓰기와 다른 서비스·경로는 아래 기본 거부로 간다.
+  // 등록 기기가 notes 서비스의 메모 한 건(GET /notes/:id)을 읽을 때만 허용한다. 메모 전체 목록 경로는 열지 않는다(한 건의 주인 비교는 API가 한다). 쓰기와 다른 서비스·경로는 아래 기본 거부로 간다.
   if (request.method === 'GET' && request.service === 'notes'
-      && typeof request.route === 'string' && /^GET \/(?:api\/)?notes(?:\/:id)?$/u.test(request.route)) {
+      && typeof request.route === 'string' && /^GET \/(?:api\/)?notes\/:id$/u.test(request.route)) {
     // 7단계: 복합 이상 접속은 다시 확인한 뒤에만 허용한다. 영구 차단이 아니라 추가 확인이다.
     const info = readConnectionInfo(request);
     if (complexAnomaly(info) && !info.stepUp.verified) {
