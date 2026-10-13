@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -41,8 +41,8 @@ export async function runAttackChecks(config) {
   const staticObserved = noteCount === null
     ? `/data.json을 읽지 못함 (HTTP ${response.status})`
     : `/data.json 메모 ${noteCount}건, 시작 틀 확인 표시 ${markerPresent ? '있음' : '없음'} (HTTP ${response.status})`;
-  if (config.step >= 3 && config.step <= 9) {
-    // 3~9단계: 로그인 없는 요청과 위조 토큰 요청이 자료 없이 거부되는지 실제로 보낸다.
+  if (config.step >= 3 && config.step <= 10) {
+    // 3~10단계: 로그인 없는 요청과 위조 토큰 요청이 자료 없이 거부되는지 실제로 보낸다.
     // 본문은 비워 보내므로 거부가 깨져도 자료가 바뀌지 않는다. 응답 본문은 기록하지 않고 상태 코드만 남긴다.
     const ghostId = '00000000-0000-4000-8000-000000000000';
     const status = async (method, path, headers = {}) => {
@@ -145,6 +145,8 @@ export async function runAttackChecks(config) {
         observed: '미실행: 두 계정의 로그인 토큰이 필요해 이 스크립트가 보내지 않음. 가짜 DB 로컬 시험은 README의 8단계 절 참고' }] : []),
       ...(config.step >= 9 ? [{ attackId: 'burst_read_revocation', expected: '짧은 시간에 폭주 조회를 한 도플갱어에게 회수 제안이 나가고 실제 접속이 회수됨',
         observed: '미실행: 운영 엔진의 사건 전달과 접속 회수가 필요해 이 스크립트가 보내지 않음. 가상 사건 시험은 npm run detect:test' }] : []),
+      ...(config.step >= 10 ? [{ attackId: 'restore_route_one_note', expected: '변조·삭제된 시험 계정 B의 메모가 복구 경로로 한 건만 돌아오고, 다른 사용자의 요청과 변조된 백업은 거부됨',
+        observed: '미실행: B 계정의 로그인 토큰과 백업 SQL 실행이 필요해 이 스크립트가 보내지 않음. 가짜 DB 로컬 시험은 README의 10단계 절 참고' }] : []),
       config.step === 3
         ? { attackId: 'login_b_other_note', expected: 'B가 A의 메모를 읽고 고칠 수 있음 (4단계에서 막을 허점)',
           observed: '미실행: 4단계에서 기록' }

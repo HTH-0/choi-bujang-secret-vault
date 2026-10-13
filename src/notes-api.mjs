@@ -2,6 +2,7 @@
 // 로그인 확인은 틀의 src/verify-login.mjs가 합니다. 요청이 보낸 userId·role·owner_id는 읽지 않고,
 // 사용자는 검증된 토큰에서만 얻습니다. SUPABASE_URL과 서버 전용 SUPABASE_SECRET_KEY는 환경변수에서만 읽고
 // 응답·로그에 넣지 않습니다.
+import { createHash } from 'node:crypto';
 import config from '../aleph.config.json' with { type: 'json' };
 import { createLoginVerifier } from './verify-login.mjs';
 
@@ -13,7 +14,7 @@ export const BODY_MAX = 5000;
 // 8단계: 요청이 닿는 자원을 가리키는 ID. 서버 코드가 경로(핸들러)로만 정하고, 헤더·쿼리·본문이 보낸 값은 읽지 않는다.
 // instructorNotice는 ID만 예약했다. 강사 공지의 자료와 주소는 아직 없으므로 이 ID를 쓰는 경로가 없다.
 export const RESOURCE_IDS = Object.freeze({ note: 'vault.note', instructorNotice: 'vault.instructor_notice' });
-const ROUTE_RESOURCES = Object.freeze({ '/api/notes': RESOURCE_IDS.note, '/api/notes/:id': RESOURCE_IDS.note });
+const ROUTE_RESOURCES = Object.freeze({ '/api/notes': RESOURCE_IDS.note, '/api/notes/:id': RESOURCE_IDS.note, '/api/restore': RESOURCE_IDS.note });
 // 허용 경로 모양(aleph.config.json의 allowedRoutes)을 자원 ID로 바꾼다. 표에 없는 경로는 null이며 기본값으로 채우지 않는다.
 export const resourceIdForRoute = (route) => (typeof route === 'string' && Object.hasOwn(ROUTE_RESOURCES, route)
   ? ROUTE_RESOURCES[route] : null);
@@ -53,10 +54,14 @@ export async function guard(request, response, allowedMethods, resourceId = null
   return { userId: login.userId, resourceId: Object.values(RESOURCE_IDS).includes(resourceId) ? resourceId : null };
 }
 
+// 서버가 요청할 수 있는 테이블. 기본은 vault_notes이고, 10단계의 백업 테이블만 더했다.
+const TABLES = Object.freeze(['vault_notes', 'vault_notes_backup']);
+
 // vault_notes 테이블 요청. 새 형식의 비밀 키(sb_...)는 JWT가 아니므로 apikey 헤더로만 보낸다.
-export function rest({ method = 'GET', query = {}, body, prefer } = {}) {
+export function rest({ table = 'vault_notes', method = 'GET', query = {}, body, prefer } = {}) {
+  if (!TABLES.includes(table)) throw new TypeError('unknown_table');
   const secretKey = process.env.SUPABASE_SECRET_KEY;
-  const url = new URL('/rest/v1/vault_notes', process.env.SUPABASE_URL);
+  const url = new URL(`/rest/v1/${table}`, process.env.SUPABASE_URL);
   for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
   const headers = { apikey: secretKey };
   if (!secretKey.startsWith('sb_')) headers.Authorization = `Bearer ${secretKey}`;
@@ -70,6 +75,15 @@ export function rest({ method = 'GET', query = {}, body, prefer } = {}) {
 
 // 테이블의 content 칸이 API에서는 body다.
 export const toNote = (row) => ({ id: row.id, title: row.title, body: row.content });
+
+// 10단계: 메모 내용 해시 = sha256(utf8(제목 + 줄바꿈 + 본문)), 16진수 소문자.
+// supabase/10-vault-notes-backup.sql이 DB에서 계산하는 값과 같은 식이다.
+export const contentHash = (title, content) => createHash('sha256').update(`${title}\n${content}`, 'utf8').digest('hex');
+
+// 10단계: 복구 결과를 서버 로그에 한 줄로 남긴다. 결과 이름·자원 ID·메서드만 적고 사용자 ID, 토큰, 메모 내용은 적지 않는다.
+export function auditRestore(outcome, login) {
+  console.warn(JSON.stringify({ event: 'restore', outcome, resource: login?.resourceId ?? null, method: 'POST' }));
+}
 
 // 소유자 검사: DB 행의 owner_id가 검증된 사용자 ID와 같은지만 본다. 요청이 보낸 값은 쓰지 않는다.
 export const isOwner = (row, userId) => typeof row?.owner_id === 'string'
