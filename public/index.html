@@ -3,6 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101a28">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <script src="/app-status.js" defer></script>
   <title>BYTE BACK | 점령된 자료실</title>
   <style>
     :root { color-scheme: dark; font-family: system-ui, sans-serif; }
@@ -27,6 +31,14 @@
     li button { margin: 12px 8px 0 0; padding: 6px 14px; font-size: 15px; }
     button:disabled { opacity: .5; cursor: not-allowed; }
     #auth-error, #notes-error { min-height: 1.5em; margin: 10px 0 0; color: #ffb3c0; font-size: 15px; }
+    .app-status { margin: 26px 0; padding: 18px 19px; border: 1px solid #51667c; border-radius: 14px; background: #1a2a3d; }
+    .app-status h2 { margin: 0 0 8px; font-size: 20px; }
+    .app-status dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; }
+    .app-status dt { color: #8ad8df; font-size: 15px; font-weight: 700; }
+    .app-status dd { margin: 0; color: #bfd0e5; font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
+    .device-actions button { margin: 12px 10px 0 0; }
+    #device-request-note { min-height: 1.4em; margin: 10px 0 0; color: #bfd0e5; font-size: 15px; overflow-wrap: anywhere; }
+    #offline-notice { margin: 0 0 12px; padding: 10px 12px; border: 1px solid #d07384; border-radius: 10px; color: #ffe3e8; background: #612a3544; font-size: 15px; }
   </style>
 </head>
 <body>
@@ -35,6 +47,20 @@
     <h1>점령된 자료실</h1>
     <p>아래 기록은 모두 실습을 위해 만든 가상 자료입니다. 실제 개인정보나 비밀번호를 적지 마세요.</p>
     <div class="notice">로그인한 사용자만 자기 메모를 읽고 쓸 수 있습니다. 서버가 확인한 사용자와 메모의 소유자가 같을 때만 읽기·수정·삭제가 되고, 남의 메모에는 접근할 수 없습니다.</div>
+    <section class="app-status" aria-labelledby="app-status-title">
+      <h2 id="app-status-title">앱 상태</h2>
+      <p id="offline-notice" role="status" hidden>오프라인입니다. 자료는 서버에만 있으므로 연결이 돌아올 때까지 메모를 볼 수도, 고칠 수도 없습니다.</p>
+      <dl>
+        <dt>설치 상태</dt><dd id="status-install">확인 중입니다.</dd>
+        <dt>연결 상태</dt><dd id="status-network">확인 중입니다.</dd>
+        <dt>기기 승인</dt><dd id="status-device">서버 확인 전: 이 화면은 기기 등록 여부를 판정하지 않습니다. 기기 등록은 서버가 요청마다 확인하며, 설치되었다는 표시만으로 기기 확인이 끝난 것이 아닙니다.</dd>
+      </dl>
+      <div class="device-actions">
+        <button type="button" id="device-recheck" class="secondary">승인 상태 다시 확인</button>
+        <button type="button" id="device-request-copy" class="secondary">승인 요청 문구 복사</button>
+      </div>
+      <p id="device-request-note" role="status"></p>
+    </section>
     <section class="auth" aria-labelledby="auth-title">
       <h2 id="auth-title">로그인</h2>
       <p id="auth-status" aria-live="polite">로그아웃 상태입니다.</p>
@@ -102,6 +128,7 @@
     let supabase = null;
     let editingId = null;
     let shownToken = null;
+    let deviceApproved = false;
     const message = (text) => {
       const item = document.createElement('li');
       item.textContent = text;
@@ -110,6 +137,8 @@
 
     // 자료 요청은 로그인 토큰만 실어 보낸다. 서버가 토큰을 검사하므로 화면은 userId·role을 보내지 않는다.
     const api = async (method, path, payload) => {
+      // 11단계: 승인 전에는 자료 요청을 보내지 않는다(화면 안내이며, 서버 쪽 보호는 로그인과 소유자 검사가 맡는다).
+      if (!deviceApproved) throw new Error('이 기기는 아직 승인되지 않아 자료를 요청하지 않습니다.');
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) throw new Error('로그인이 필요합니다.');
@@ -181,7 +210,7 @@
       statusLine.textContent = email ? `로그인됨: ${email}` : '로그아웃 상태입니다.';
       form.hidden = Boolean(email);
       logoutButton.hidden = !email;
-      editor.hidden = !email;
+      editor.hidden = !email || !deviceApproved;
       const token = session?.access_token ?? null;
       if (token === shownToken) return;
       shownToken = token;
@@ -190,12 +219,47 @@
         resetEditor();
         return message('로그인하면 내 메모가 보입니다.');
       }
+      if (!deviceApproved) return message('이 기기는 아직 승인되지 않았습니다. 승인 전에는 메모를 요청하지도 보여 주지도 않습니다.');
       message('메모를 불러오는 중입니다.');
       loadNotes();
     };
 
+    // 11단계: 기기 승인 여부는 서버 응답(/api/device/status)으로만 판단한다. 설치 표시, 버튼, 브라우저 저장소는 근거가 아니다.
+    const deviceLine = document.querySelector('#status-device');
+    const DEVICE_PENDING = '승인 전: 서버가 이 기기를 등록 기기로 확인하지 않았습니다. 설치했다는 표시나 이 화면의 버튼만으로는 승인되지 않으며, 승인은 서버가 정합니다.';
+    const checkDevice = async () => {
+      deviceApproved = false;
+      if (deviceLine) deviceLine.textContent = '서버에 확인하는 중입니다.';
+      try {
+        const response = await fetch('/api/device/status', { cache: 'no-store', credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        const body = response.status === 200 ? await response.json() : null;
+        deviceApproved = body?.approved === true;
+      } catch { deviceApproved = false; }
+      if (deviceLine) deviceLine.textContent = deviceApproved ? '승인됨: 서버가 이 기기를 등록 기기로 확인했습니다.' : DEVICE_PENDING;
+      return deviceApproved;
+    };
+    document.querySelector('#device-recheck').addEventListener('click', async () => {
+      await checkDevice();
+      if (supabase) {
+        shownToken = null;
+        render((await supabase.auth.getSession()).data.session);
+      }
+    });
+    document.querySelector('#device-request-copy').addEventListener('click', async () => {
+      // 요청 문구에는 비밀번호, 토큰, 기기 키를 넣지 않는다. 문구를 보냈다고 승인되는 것도 아니다.
+      const text = `기기 등록을 요청합니다.\n앱 주소: ${location.origin}\n요청 시각: ${new Date().toISOString()}\n이 문구에는 비밀번호, 토큰, 기기 키가 들어 있지 않습니다.`;
+      const note = document.querySelector('#device-request-note');
+      try {
+        await navigator.clipboard.writeText(text);
+        note.textContent = '요청 문구를 복사했습니다. 강사에게 전달하세요. 문구를 보냈다고 승인된 것은 아닙니다.';
+      } catch {
+        note.textContent = `복사하지 못했습니다. 아래 문구를 직접 전달하세요: ${text.replace(/\n/g, ' / ')}`;
+      }
+    });
+
     {
       try {
+        await checkDevice();
         const authConfig = await loadAuthConfig();
         const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm');
         supabase = createClient(authConfig.supabaseUrl, authConfig.publishableKey);

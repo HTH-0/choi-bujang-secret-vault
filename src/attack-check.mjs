@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -41,8 +41,8 @@ export async function runAttackChecks(config) {
   const staticObserved = noteCount === null
     ? `/data.json을 읽지 못함 (HTTP ${response.status})`
     : `/data.json 메모 ${noteCount}건, 시작 틀 확인 표시 ${markerPresent ? '있음' : '없음'} (HTTP ${response.status})`;
-  if (config.step >= 3 && config.step <= 10) {
-    // 3~10단계: 로그인 없는 요청과 위조 토큰 요청이 자료 없이 거부되는지 실제로 보낸다.
+  if (config.step >= 3 && config.step <= 11) {
+    // 3~11단계: 로그인 없는 요청과 위조 토큰 요청이 자료 없이 거부되는지 실제로 보낸다.
     // 본문은 비워 보내므로 거부가 깨져도 자료가 바뀌지 않는다. 응답 본문은 기록하지 않고 상태 코드만 남긴다.
     const ghostId = '00000000-0000-4000-8000-000000000000';
     const status = async (method, path, headers = {}) => {
@@ -141,16 +141,46 @@ export async function runAttackChecks(config) {
         observed: '미실행: 미등록 기기 공격은 심판이 맡고, 이 스크립트는 기기 등록 요청을 보내지 않음. 로컬 가상 요청 시험은 npm run decider:test' }] : []),
       ...(config.step >= 7 ? [{ attackId: 'unusual_access_step_up', expected: '평소와 다른 시각·처음 보는 네트워크·대량 조회가 겹친 접속이 다시 로그인 전에는 자료 없이 추가 확인으로 가고, 새 로그인 뒤 새 요청이 다시 판정됨',
         observed: '미실행: 엔진이 보내는 stepUp과 재인증 화면이 있는 환경이 필요해 이 스크립트가 보내지 않음. 가상 요청 시험은 npm run fixture:7, npm run decider:test' }] : []),
-      ...(config.step >= 8 ? [{ attackId: 'direct_api_other_zone', expected: '메뉴를 거치지 않은 직접 API 요청에서 다른 사용자 또는 다른 구역의 자료가 나오지 않음',
+      // 점검 항목은 제출 묶음에서 20개까지만 받는다. 11단계부터는 이 항목을 아래 login_b_other_note에 합친다(둘 다 두 계정 토큰이 필요한 시험이다).
+      ...(config.step >= 8 && config.step < 11 ? [{ attackId: 'direct_api_other_zone', expected: '메뉴를 거치지 않은 직접 API 요청에서 다른 사용자 또는 다른 구역의 자료가 나오지 않음',
         observed: '미실행: 두 계정의 로그인 토큰이 필요해 이 스크립트가 보내지 않음. 가짜 DB 로컬 시험은 README의 8단계 절 참고' }] : []),
       ...(config.step >= 9 ? [{ attackId: 'burst_read_revocation', expected: '짧은 시간에 폭주 조회를 한 도플갱어에게 회수 제안이 나가고 실제 접속이 회수됨',
         observed: '미실행: 운영 엔진의 사건 전달과 접속 회수가 필요해 이 스크립트가 보내지 않음. 가상 사건 시험은 npm run detect:test' }] : []),
       ...(config.step >= 10 ? [{ attackId: 'restore_route_one_note', expected: '변조·삭제된 시험 계정 B의 메모가 복구 경로로 한 건만 돌아오고, 다른 사용자의 요청과 변조된 백업은 거부됨',
         observed: '미실행: B 계정의 로그인 토큰과 백업 SQL 실행이 필요해 이 스크립트가 보내지 않음. 가짜 DB 로컬 시험은 README의 10단계 절 참고' }] : []),
+      // 11단계: 실제로 보내는 점검 하나(기기 승인 상태 경로)와 미실행 하나. 서버가 기기를 승인할 길이 없어 이 경로는 항상 승인 전으로 답해야 한다.
+      ...(config.step >= 11 ? [
+        await (async () => {
+          const probe = async (headers) => {
+            const sent = await fetch(new URL('/api/device/status', app), { redirect: 'error', signal: AbortSignal.timeout(10000), headers });
+            let approved = null;
+            let reason = null;
+            try {
+              const body = await sent.json();
+              if (typeof body?.approved === 'boolean') approved = body.approved;
+              if (typeof body?.reason === 'string') reason = body.reason.slice(0, 40);
+            } catch { /* 본문은 기록하지 않는다 */ }
+            return { status: sent.status, approved, reason };
+          };
+          const plain = await probe({});
+          const forged = await probe({ 'x-device-registered': 'true', 'x-approved': '1', Cookie: 'device=registered; approved=1' });
+          const notApproved = (r) => r.status === 200 && r.approved === false;
+          const text = (r) => `HTTP ${r.status}${r.approved === null ? '' : `, approved=${r.approved}`}${r.reason ? `, ${r.reason}` : ''}`;
+          return { attackId: 'device_status_not_approved', expected: '기기 신호가 없거나 위조한 요청에도 서버가 승인 전으로 답함',
+            observed: notApproved(plain) && notApproved(forged)
+              ? `신호 없는 요청과 위조 헤더·쿠키를 붙인 요청 모두 승인 전으로 답함 (${text(plain)})`
+              : `승인 전이 아닌 응답이 있음 (신호 없음: ${text(plain)} / 위조 신호: ${text(forged)})` };
+        })(),
+        { attackId: 'device_approved_and_signed_requests', expected: '서버가 승인한 기기에서 기존 화면이 열리고, 서명 없는 보호 요청과 서명 뒤 경로·본문 변경은 거부됨',
+          observed: '미실행: 서버가 기기를 승인할 환경(엔진 연결)이 없고 앱 서명 방식이 정해지지 않아 구현하지 않았으며 이 스크립트도 보내지 않음. 승인 전 화면 동작은 가짜 서버로 로컬 시험함' },
+      ] : []),
       config.step === 3
         ? { attackId: 'login_b_other_note', expected: 'B가 A의 메모를 읽고 고칠 수 있음 (4단계에서 막을 허점)',
           observed: '미실행: 4단계에서 기록' }
-        : { attackId: 'login_b_other_note', expected: 'B 로그인으로 A의 메모 읽기·수정·삭제와 소유자 변경이 거부됨(404·403)',
+        : { attackId: 'login_b_other_note',
+          expected: config.step >= 11
+            ? 'B 로그인으로 A의 메모 읽기·수정·삭제와 소유자 변경이 거부되고, 메뉴를 거치지 않은 직접 API 요청에서도 다른 사용자·구역의 자료가 나오지 않음(404·403)'
+            : 'B 로그인으로 A의 메모 읽기·수정·삭제와 소유자 변경이 거부됨(404·403)',
           observed: '미실행: A·B 로그인 토큰이 필요해 이 스크립트가 보내지 않았고, 배포 뒤 두 계정으로 직접 확인해야 함' },
     ];
   }
