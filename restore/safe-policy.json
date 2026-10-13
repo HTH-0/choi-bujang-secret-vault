@@ -1,0 +1,40 @@
+{
+  "schema": "aleph.policy.snapshot.v1",
+  "commit": "6e80bf0ac4ac4ca2cb385d391b7395897242eca1",
+  "services": {
+    "notes": {
+      "files": {
+        "src/decider.mjs": "054796e8fd6f6a1fade20d0cda0d5da886f81296011fe1619ef1e48e410d7d29"
+      },
+      "ruleIds": [
+        "starter.deny",
+        "xdr_bruteforce_block",
+        "xdr_webinjection_block",
+        "device_registered",
+        "step_up_required"
+      ],
+      "allowedRoutes": [
+        "/api/notes",
+        "/api/notes/:id"
+      ]
+    },
+    "detect": {
+      "files": {
+        "src/detect.mjs": "aaa9a00073cbd63054c27bee625a77a33425c75949d996943011bdaf107d3909"
+      }
+    },
+    "xdr-brute-force": {
+      "files": {
+        "xdr/brute-force/decide.mjs": "bf9fbeec4a26e6cafeac868f4cf656a98bb1dc6dd3ae7b24a2e1907a83915d72",
+        "xdr/brute-force/patterns.json": "a564ec888847d436be5cd9f07d7e8c82673241357197fdfa9e41f9d1bac6a86b"
+      }
+    },
+    "xdr-web-injection": {
+      "files": {
+        "xdr/web-injection/decide.mjs": "fd0c1eaf821746df9c3e71706489e56f79270f363f7ec8b75249aba4f18f524f",
+        "xdr/web-injection/patterns.json": "ba9137bc518c7e040a219eed42812d64f29609ea5a746e7b704c00a630eff5cd"
+      }
+    }
+  },
+  "sha256": "ebd892385033511329314150099b73198fcfda7f05969cc6b14114a5591c9562"
+}
