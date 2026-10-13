@@ -3,7 +3,7 @@
 // 요청 본문의 userId, role, 기기 키, 토큰을 별도로 믿거나 저장하지 마세요.
 import { readFileSync } from 'node:fs';
 
-export const RULE_IDS = Object.freeze(['starter.deny', 'xdr_bruteforce_block', 'xdr_webinjection_block']);
+export const RULE_IDS = Object.freeze(['starter.deny', 'xdr_bruteforce_block', 'xdr_webinjection_block', 'device_registered']);
 
 // XDR 보너스: 각 respond.mjs가 차단 후보만 규칙 파일에 넣는다(무차별 로그인: xdr/block-rules.json, 웹 주입: xdr/web-injection/block-rules.json).
 // 요청 계약의 subjectId·at만 비교한다. 규칙 파일이 없거나 틀리면 그 규칙은 아무 일도 하지 않고 아래 기존 규칙으로 간다.
@@ -39,6 +39,26 @@ export async function decide(request) {
       decision: 'deny',
       reasonCode: /^[a-z][a-z0-9_]{0,63}$/u.test(blocked.rule.reasonCode ?? '') ? blocked.rule.reasonCode : blocked.source.fallbackReason,
       ruleIds: [blocked.source.ruleId],
+    };
+  }
+  // 6단계: 엔진이 확인한 deviceRegistered가 true일 때만 다음으로 간다. false·값 없음·다른 값은 모두 거부한다.
+  if (request?.deviceRegistered !== true) {
+    return {
+      schema: 'aleph.decision.v1',
+      requestId: request?.requestId,
+      decision: 'deny',
+      reasonCode: 'device_not_registered',
+      ruleIds: [RULE_IDS[3]],
+    };
+  }
+  // 등록 기기의 읽기(GET)만 허용한다. 쓰기는 아래 기본 거부로 간다.
+  if (request.method === 'GET') {
+    return {
+      schema: 'aleph.decision.v1',
+      requestId: request.requestId,
+      decision: 'allow',
+      reasonCode: 'approved',
+      ruleIds: [RULE_IDS[3]],
     };
   }
   return {

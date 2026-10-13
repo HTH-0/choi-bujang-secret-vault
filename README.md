@@ -10,6 +10,26 @@
 
 배포가 끝나면 `/`에서 점령된 가상 자료실을 볼 수 있습니다. 시작 틀에서는 `/data.json`에 같은 가상 메모가 공개됩니다. 이 공개 상태를 확인하는 것이 1단계의 출발점입니다. 1단계 접수와 심판 판정은 포털에서 확인합니다.
 
+## 6단계 현황: 등록한 기기만 자료실에 들어옵니다
+
+- `src/decider.mjs`에 규칙 `device_registered`를 하나 추가했고 `RULE_IDS`에도 적었습니다. 판정 순서는 다음과 같습니다. 먼저 보너스 XDR 차단 규칙을 검사합니다. 다음으로 `request.deviceRegistered`가 `true`가 아니면(`false`, 값 없음, 문자열 `'true'` 같은 다른 값) `deny`와 이유 코드 `device_not_registered`로 거부합니다. 등록 기기의 `GET` 요청은 `allow`와 이유 코드 `approved`로 허용합니다. 등록 기기의 쓰기 요청(`POST`·`PUT`·`DELETE`)은 기존 기본 규칙 `starter.deny`가 거부합니다.
+- 요청 계약([docs/DECIDER_REQUEST.md](docs/DECIDER_REQUEST.md))에 있는 `deviceRegistered`와 `method`만 읽습니다. `request.device`, `request.identity`, `request.geo`, `request.role`은 계약에 없으므로 쓰지 않습니다. 응답은 항목 다섯 개(`schema`, `requestId`, `decision`, `reasonCode`, `ruleIds`)입니다.
+- 이 과정에는 따로 설치할 접속 프로그램이 없습니다. 설치 명령은 필요하지 않습니다. 미등록 기기로 접속을 시도하는 공격은 심판이 맡습니다.
+- 인증서·CA·서명 키·기기 개인키는 만들지 않았고 Git에도 넣지 않았습니다.
+
+**확인 순서 (다시 실행하는 방법)**
+1. 저장소 폴더에서 `npm run decider:test`를 실행합니다.
+2. 출력에 `통과 · 등록 기기의 정상 요청`(`allow`)이 보여야 합니다.
+3. 출력에 `통과 · 미등록 기기의 가상 요청`(`deny`, 이유 코드 `device_not_registered`)이 보여야 합니다.
+4. 둘 중 하나라도 `확인 필요`로 나오거나 명령이 종료 코드 1로 끝나면 `src/decider.mjs`의 첫 오류만 근거로 한 가지를 고칩니다.
+
+**6단계에서 확인한 것과 하지 않은 것**
+- 확인함(제가 가상 요청으로 한 로컬 시험, 심판 판정 아님): `npm run decider:test`에서 두 항목이 모두 통과했습니다. 별도 확인에서 등록 기기 `GET`은 `allow`/`approved`, `deviceRegistered: false`와 값 없음과 문자열 `'true'`는 `deny`/`device_not_registered`, 등록 기기 `POST`는 `deny`/`starter_not_ready`였습니다. 응답 항목은 모두 다섯 개였습니다. `npm run test:r5`도 통과했습니다.
+- **미확인**: 허용할 때 쓴 이유 코드 `approved`가 운영 등록부의 `allowedReasonCodes`에 있는지는 확인하지 못했습니다. 이 저장소에 등록부가 없고, 로컬 시험은 이유 코드의 형식만 검사합니다.
+- **미확인**: 반 엔진과 심판이 보내는 실제 미등록 기기 요청의 결과는 제가 볼 수 없습니다. 실제 릴레이는 미등록 기기를 판정기보다 먼저 막으므로, 이 규칙은 그 앞단을 통과한 가상 요청에 대한 두 번째 방어입니다.
+- `aleph.config.json`의 `step`을 6으로 올렸습니다. 빌드(`scripts/build-public.mjs`)와 배포 식별(`scripts/deployment-identity.mjs`)과 `src/attack-check.mjs`가 `step` 6을 받도록 허용 단계에 6을 추가했습니다. 이 셋이 6을 받지 않으면 Vercel 빌드가 멈춥니다.
+- `src/attack-check.mjs`에 점검 `unregistered_device_denied`를 **미실행**으로 기록합니다. 이 스크립트는 기기 등록 요청을 보내지 않으며, 미등록 기기 공격은 심판이 맡습니다.
+
 ## 5단계 현황: 자료 요청을 서버 한곳으로
 
 - 브라우저 코드(`public/index.html`)가 메모 자료를 Supabase에서 직접 읽거나 고치는 곳을 찾았고 **없음**이었습니다. Supabase는 로그인(Auth) 호출에만 쓰이고, 자료 요청은 항상 `/api/notes`·`/api/notes/:id` 서버 함수를 거칩니다. 그래서 화면 코드는 바꾸지 않았습니다.
