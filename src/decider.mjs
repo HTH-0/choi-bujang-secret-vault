@@ -51,8 +51,9 @@ export async function decide(request) {
       ruleIds: [RULE_IDS[3]],
     };
   }
-  // 등록 기기의 읽기(GET)만 허용한다. 쓰기는 아래 기본 거부로 간다.
-  if (request.method === 'GET') {
+  // 등록 기기가 내 자료실(notes 서비스의 목록·한 건)을 읽는 GET만 허용한다. 쓰기와 다른 서비스·경로는 아래 기본 거부로 간다.
+  if (request.method === 'GET' && request.service === 'notes'
+      && typeof request.route === 'string' && /^GET \/(?:api\/)?notes(?:\/:id)?$/u.test(request.route)) {
     return {
       schema: 'aleph.decision.v1',
       requestId: request.requestId,

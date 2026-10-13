@@ -12,7 +12,7 @@
 
 ## 6단계 현황: 등록한 기기만 자료실에 들어옵니다
 
-- `src/decider.mjs`에 규칙 `device_registered`를 하나 추가했고 `RULE_IDS`에도 적었습니다. 판정 순서는 다음과 같습니다. 먼저 보너스 XDR 차단 규칙을 검사합니다. 다음으로 `request.deviceRegistered`가 `true`가 아니면(`false`, 값 없음, 문자열 `'true'` 같은 다른 값) `deny`와 이유 코드 `device_not_registered`로 거부합니다. 등록 기기의 `GET` 요청은 `allow`와 이유 코드 `approved`로 허용합니다. 등록 기기의 쓰기 요청(`POST`·`PUT`·`DELETE`)은 기존 기본 규칙 `starter.deny`가 거부합니다.
+- `src/decider.mjs`에 규칙 `device_registered`를 하나 추가했고 `RULE_IDS`에도 적었습니다. 판정 순서는 다음과 같습니다. 먼저 보너스 XDR 차단 규칙을 검사합니다. 다음으로 `request.deviceRegistered`가 `true`가 아니면(`false`, 값 없음, 문자열 `'true'` 같은 다른 값) `deny`와 이유 코드 `device_not_registered`로 거부합니다. 등록 기기가 내 자료실을 읽는 요청만(`service`가 `notes`이고, `method`가 `GET`이고, `route`가 `GET /notes`·`GET /notes/:id`·`GET /api/notes`·`GET /api/notes/:id` 중 하나) `allow`와 이유 코드 `approved`로 허용합니다. 등록 기기의 쓰기 요청(`POST`·`PUT`·`DELETE`)과 다른 서비스·다른 경로의 요청은 기존 기본 규칙 `starter.deny`가 거부합니다. 심판이 `S06_DEVICE_RULE_MISSING`을 낸 뒤, 카드의 "로그인·기기 등록 여부·동작·경로" 기준에 맞추려고 허용 조건에 서비스와 경로를 추가했습니다.
 - 요청 계약([docs/DECIDER_REQUEST.md](docs/DECIDER_REQUEST.md))에 있는 `deviceRegistered`와 `method`만 읽습니다. `request.device`, `request.identity`, `request.geo`, `request.role`은 계약에 없으므로 쓰지 않습니다. 응답은 항목 다섯 개(`schema`, `requestId`, `decision`, `reasonCode`, `ruleIds`)입니다.
 - 이 과정에는 따로 설치할 접속 프로그램이 없습니다. 설치 명령은 필요하지 않습니다. 미등록 기기로 접속을 시도하는 공격은 심판이 맡습니다.
 - 인증서·CA·서명 키·기기 개인키는 만들지 않았고 Git에도 넣지 않았습니다.
@@ -24,7 +24,7 @@
 4. 둘 중 하나라도 `확인 필요`로 나오거나 명령이 종료 코드 1로 끝나면 `src/decider.mjs`의 첫 오류만 근거로 한 가지를 고칩니다.
 
 **6단계에서 확인한 것과 하지 않은 것**
-- 확인함(제가 가상 요청으로 한 로컬 시험, 심판 판정 아님): `npm run decider:test`에서 두 항목이 모두 통과했습니다. 별도 확인에서 등록 기기 `GET`은 `allow`/`approved`, `deviceRegistered: false`와 값 없음과 문자열 `'true'`는 `deny`/`device_not_registered`, 등록 기기 `POST`는 `deny`/`starter_not_ready`였습니다. 응답 항목은 모두 다섯 개였습니다. `npm run test:r5`도 통과했습니다.
+- 확인함(제가 가상 요청으로 한 로컬 시험, 심판 판정 아님): `npm run decider:test`에서 두 항목이 모두 통과했습니다. 별도 확인에서 등록 기기의 자료실 `GET`은 `allow`/`approved`, 등록 기기의 다른 서비스·다른 경로 `GET`은 `deny`/`starter_not_ready`, `deviceRegistered: false`와 값 없음과 문자열 `'true'`는 `deny`/`device_not_registered`, 등록 기기 `POST`는 `deny`/`starter_not_ready`였습니다. 응답 항목은 모두 다섯 개였습니다. `npm run test:r5`도 통과했습니다.
 - **미확인**: 허용할 때 쓴 이유 코드 `approved`가 운영 등록부의 `allowedReasonCodes`에 있는지는 확인하지 못했습니다. 이 저장소에 등록부가 없고, 로컬 시험은 이유 코드의 형식만 검사합니다.
 - **미확인**: 반 엔진과 심판이 보내는 실제 미등록 기기 요청의 결과는 제가 볼 수 없습니다. 실제 릴레이는 미등록 기기를 판정기보다 먼저 막으므로, 이 규칙은 그 앞단을 통과한 가상 요청에 대한 두 번째 방어입니다.
 - `aleph.config.json`의 `step`을 6으로 올렸습니다. 빌드(`scripts/build-public.mjs`)와 배포 식별(`scripts/deployment-identity.mjs`)과 `src/attack-check.mjs`가 `step` 6을 받도록 허용 단계에 6을 추가했습니다. 이 셋이 6을 받지 않으면 Vercel 빌드가 멈춥니다.
