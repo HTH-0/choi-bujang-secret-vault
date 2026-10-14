@@ -1,0 +1,96 @@
+{
+  "schema": "aleph.xdr.patterns.v1",
+  "moduleKey": "exfiltration",
+  "basis": {
+    "techniques": [
+      {
+        "technique": "T1041",
+        "name": "Exfiltration Over C2 Channel",
+        "source": "https://attack.mitre.org/techniques/T1041/"
+      },
+      {
+        "technique": "T1048",
+        "name": "Exfiltration Over Alternative Protocol",
+        "source": "https://attack.mitre.org/techniques/T1048/",
+        "subTechnique": "T1048.003 Exfiltration Over Unencrypted Non-C2 Protocol",
+        "subSource": "https://attack.mitre.org/techniques/T1048/003/"
+      }
+    ],
+    "retrievedAt": "2026-10-14",
+    "note": "근거 문장은 공식 ATT&CK 페이지의 내용을 한국어로 줄여 쓴 것입니다. 원문 그대로가 아니므로 출처 페이지에서 직접 확인하세요. 두 신호 모두 카드가 정한 기법(T1041, T1048과 그 하위 기법) 안에서 근거를 찾았습니다."
+  },
+  "caveat": "ATT&CK 페이지에는 전송량·횟수·시각 같은 숫자 기준이 없습니다. 이 파일에는 숫자 기준을 넣지 않았고, '대용량'의 기준은 판정 코드가 경보 값(data.bytes, data.files, data.count)을 보고 따로 정해야 합니다. 연습 경보의 시각 값은 모두 오전 9시~오후 4시(한국 시각) 안에 있어서, '업무 시간 밖'은 시각 값이 아니라 경보 설명으로만 드러납니다. data.files는 파일 이름이 아니라 파일 수입니다.",
+  "patterns": [
+    {
+      "id": "large_transfer_to_new_destination",
+      "name": "처음 보는 목적지로 대용량 전송",
+      "technique": "T1041",
+      "condition": "처음 보는 목적지, 외부 주소, 또는 평소에 쓰지 않던 포트로 많은 자료가 한 번에 나가거나, 같은 목적지로 큰 전송이 반복된다.",
+      "fields": [
+        "data.srcip",
+        "data.srcuser",
+        "data.dstip",
+        "data.bytes",
+        "data.files",
+        "data.count",
+        "rule.description",
+        "timestamp"
+      ],
+      "evidence": "T1041 탐지(AN0990): 민감한 자료에 접근한 뒤 드문 외부 목적지로 나가는 통신이나 비정상적인 전송량 비율을 탐지한다.",
+      "source": "https://attack.mitre.org/techniques/T1041/",
+      "fixtureExamples": [
+        "ex-01",
+        "ex-03",
+        "ex-04",
+        "ex-05",
+        "ex-08",
+        "ex-09",
+        "ex-10"
+      ],
+      "notes": "T1041 탐지(AN0989)는 민감한 파일을 읽은 직후의 대량 전송도 봅니다. 평소에 쓰지 않던 포트로 나간 경우(ex-04)는 T1048 탐지(AN0367)의 '평소와 다른 프로토콜·유난히 큰 전송량'과도 맞습니다. 평소 목적지나 수업 자료 주소로 한 번 늘어난 전송(ex-12, ex-17)은 드문 목적지가 아니어서 넣지 않았습니다."
+    },
+    {
+      "id": "off_hours_archive_exfil",
+      "name": "업무 시간 밖 압축 파일 반출",
+      "technique": "T1048",
+      "condition": "업무(수업) 시간 밖에 자료가 외부로 나가거나, 압축 파일이 처음 보는 주소로 나간다. 둘이 함께 있거나 여러 번 반복되면 더 뚜렷하다.",
+      "fields": [
+        "data.srcip",
+        "data.srcuser",
+        "data.dstip",
+        "data.bytes",
+        "data.files",
+        "data.count",
+        "rule.description",
+        "timestamp"
+      ],
+      "evidence": "T1048 탐지(AN0367)는 평소와 다른 파일 반출을 업무 시간 밖 활동이나 유난히 큰 전송량으로 탐지하고, 하위 기법 T1048.003 탐지(AN0424)는 압축 도구 실행 뒤 이어지는 외부 연결을 탐지한다.",
+      "source": "https://attack.mitre.org/techniques/T1048/",
+      "fixtureExamples": [
+        "ex-02",
+        "ex-06",
+        "ex-07",
+        "ex-10"
+      ],
+      "notes": "T1048.003 사례: Mustang Panda가 FTP로 압축 파일을 반출했습니다(https://attack.mitre.org/techniques/T1048/003/). T1041 사례에도 Ke3chang이 압축·암호화한 RAR 파일을 명령 통로로 옮긴 일이 있습니다. 압축 파일을 만들기만 하고 외부 전송이 없는 경우(ex-13)와 압축 파일 일부만 작은 양으로 나간 경우(ex-20)는 넣지 않았습니다."
+    }
+  ],
+  "excluded": [
+    {
+      "item": "중간·작은 크기 파일 1~2건이 평소와 다른 주소나 처음 보는 주소로 나감(ex-11, ex-14)",
+      "reason": "목적지는 낯설지만 전송량이 크지 않고 반복도 없어, AN0990·AN0367의 '비정상적인 전송량' 근거가 약합니다. 판정 코드에서는 애매한 경보로 남깁니다."
+    },
+    {
+      "item": "평소 목적지·수업 자료 주소로 전송량이나 파일 수가 한 번 늘어남(ex-12, ex-17)",
+      "reason": "드문 외부 목적지가 아닙니다."
+    },
+    {
+      "item": "압축 파일만 만들고 외부 전송은 없음, 압축 파일을 연 뒤 일부만 작은 양으로 나감(ex-13, ex-20)",
+      "reason": "AN0424는 압축 뒤 이어지는 외부 연결을 봅니다. 전송이 없거나 작아서 반출이라는 근거가 부족합니다."
+    },
+    {
+      "item": "많이 읽은 뒤 전송 1건, 백업처럼 보이는 전송 1건, 실패한 전송 1건, 명령 통로의 짧은 자료 이름(ex-15, ex-16, ex-18, ex-19)",
+      "reason": "큰 전송이나 반복, 업무 시간 밖 활동이 드러나지 않았습니다. 실패한 전송(ex-18)은 자료가 나가지 않았습니다."
+    }
+  ]
+}
