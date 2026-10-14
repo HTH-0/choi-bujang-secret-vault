@@ -1,0 +1,155 @@
+{
+  "schema": "aleph.xdr.result.v1",
+  "moduleKey": "persistence",
+  "decisions": [
+    {
+      "alertId": "ps-01",
+      "action": "block",
+      "confidence": 0.95,
+      "reason": "서명 없는 새 서비스 등록·서비스 실행 파일 변경 패턴에 맞음"
+    },
+    {
+      "alertId": "ps-02",
+      "action": "block",
+      "confidence": 0.9,
+      "reason": "낯선 예약 작업 패턴에 맞음"
+    },
+    {
+      "alertId": "ps-03",
+      "action": "block",
+      "confidence": 0.9,
+      "reason": "시작 폴더 변경 패턴에 맞음"
+    },
+    {
+      "alertId": "ps-04",
+      "action": "block",
+      "confidence": 0.95,
+      "reason": "서명 없는 새 서비스 등록·서비스 실행 파일 변경 패턴에 맞음 · 반복"
+    },
+    {
+      "alertId": "ps-05",
+      "action": "block",
+      "confidence": 0.9,
+      "reason": "낯선 예약 작업 패턴에 맞음"
+    },
+    {
+      "alertId": "ps-06",
+      "action": "block",
+      "confidence": 0.95,
+      "reason": "서명 없는 새 서비스 등록·서비스 실행 파일 변경 패턴에 맞음"
+    },
+    {
+      "alertId": "ps-07",
+      "action": "block",
+      "confidence": 0.95,
+      "reason": "낯선 예약 작업 + 시작 폴더 변경 패턴에 맞음"
+    },
+    {
+      "alertId": "ps-08",
+      "action": "block",
+      "confidence": 0.9,
+      "reason": "서명 없는 새 서비스 등록·서비스 실행 파일 변경 패턴에 맞음"
+    },
+    {
+      "alertId": "ps-09",
+      "action": "alert",
+      "confidence": 0.6,
+      "reason": "애매 · 낯선 예약 작업에 못 미침 · 근거가 약해 alert"
+    },
+    {
+      "alertId": "ps-10",
+      "action": "alert",
+      "confidence": 0.6,
+      "reason": "애매 · 시작 폴더 변경에 못 미침 · 근거가 약해 alert"
+    },
+    {
+      "alertId": "ps-11",
+      "action": "alert",
+      "confidence": 0.6,
+      "reason": "애매 · 서명 없는 새 서비스 등록·서비스 실행 파일 변경에 못 미침 · 근거가 약해 alert"
+    },
+    {
+      "alertId": "ps-12",
+      "action": "alert",
+      "confidence": 0.6,
+      "reason": "애매 · 낯선 예약 작업에 못 미침 · 근거가 약해 alert"
+    },
+    {
+      "alertId": "ps-13",
+      "action": "alert",
+      "confidence": 0.6,
+      "reason": "애매 · 서명 없는 새 서비스 등록·서비스 실행 파일 변경에 못 미침 · 근거가 약해 alert"
+    },
+    {
+      "alertId": "ps-14",
+      "action": "alert",
+      "confidence": 0.6,
+      "reason": "애매 · 시작 폴더 변경에 못 미침 · 근거가 약해 alert"
+    },
+    {
+      "alertId": "ps-15",
+      "action": "alert",
+      "confidence": 0.6,
+      "reason": "애매 · 낯선 예약 작업에 못 미침 · 근거가 약해 alert"
+    },
+    {
+      "alertId": "ps-16",
+      "action": "alert",
+      "confidence": 0.6,
+      "reason": "애매 · 서명 없는 새 서비스 등록·서비스 실행 파일 변경에 못 미침 · 근거가 약해 alert"
+    },
+    {
+      "alertId": "ps-17",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "정상 이벤트 · 지속성 패턴 신호 없음"
+    },
+    {
+      "alertId": "ps-18",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "정상 이벤트 · 지속성 패턴 신호 없음"
+    },
+    {
+      "alertId": "ps-19",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "정상 이벤트 · 지속성 패턴 신호 없음"
+    },
+    {
+      "alertId": "ps-20",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "정상 이벤트 · 지속성 패턴 신호 없음"
+    },
+    {
+      "alertId": "ps-21",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "정상 이벤트 · 지속성 패턴 신호 없음"
+    },
+    {
+      "alertId": "ps-22",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "정상 이벤트 · 지속성 패턴 신호 없음"
+    },
+    {
+      "alertId": "ps-23",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "정상 이벤트 · 지속성 패턴 신호 없음"
+    },
+    {
+      "alertId": "ps-24",
+      "action": "record",
+      "confidence": 0.05,
+      "reason": "정상 이벤트 · 지속성 패턴 신호 없음"
+    }
+  ],
+  "counts": {
+    "block": 8,
+    "alert": 8,
+    "record": 8
+  }
+}

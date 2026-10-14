@@ -1,0 +1,122 @@
+{
+  "schema": "aleph.xdr.patterns.v1",
+  "moduleKey": "persistence",
+  "basis": {
+    "techniques": [
+      {
+        "technique": "T1543",
+        "name": "Create or Modify System Process",
+        "source": "https://attack.mitre.org/techniques/T1543/",
+        "subTechnique": "T1543.003 Windows Service",
+        "subSource": "https://attack.mitre.org/techniques/T1543/003/"
+      },
+      {
+        "technique": "T1053",
+        "name": "Scheduled Task/Job",
+        "source": "https://attack.mitre.org/techniques/T1053/",
+        "subTechnique": "T1053.005 Scheduled Task",
+        "subSource": "https://attack.mitre.org/techniques/T1053/005/"
+      }
+    ],
+    "retrievedAt": "2026-10-14",
+    "note": "근거 문장은 공식 ATT&CK 페이지의 내용을 한국어로 줄여 쓴 것입니다. 원문 그대로가 아니므로 출처 페이지에서 직접 확인하세요.",
+    "additional": {
+      "technique": "T1547.001",
+      "name": "Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder",
+      "source": "https://attack.mitre.org/techniques/T1547/001/",
+      "retrievedAt": "2026-10-14",
+      "note": "시작 폴더 패턴의 보조 근거입니다. 카드가 정한 근거(T1543, T1053) 밖의 기법이라 근거 한 줄(evidence)에는 쓰지 않고 notes에만 적었습니다(학생 결정, 2026-10-14)."
+    }
+  },
+  "caveat": "ATT&CK 페이지에는 건수·규칙 수준 같은 숫자 기준이 없습니다. 이 파일에는 숫자 기준을 넣지 않았고, 기준은 판정 코드가 경보 값을 보고 따로 정해야 합니다. '평소와 다른 경로'의 예로 든 임시 폴더는 경보에서 본 모양이며, ATT&CK가 특정 폴더를 정한 것은 아닙니다.",
+  "patterns": [
+    {
+      "id": "unsigned_new_service",
+      "name": "서명 없는 새 서비스 등록·서비스 실행 파일 변경",
+      "technique": "T1543.003",
+      "condition": "새 서비스가 등록되거나 기존 서비스의 실행 파일이 바뀌었고, 그 실행 파일이 서명되지 않았거나 임시 폴더처럼 평소와 다른 경로를 가리킨다.",
+      "fields": [
+        "data.srcip",
+        "data.srcuser",
+        "data.path",
+        "data.count",
+        "rule.description",
+        "timestamp"
+      ],
+      "evidence": "T1543.003 탐지(AN1527): Windows 서비스를 만들거나 바꾸는 일과, 서명이 없거나 비정상 경로의 실행 파일로 서비스가 실행되는 것을 탐지한다.",
+      "source": "https://attack.mitre.org/techniques/T1543/003/",
+      "fixtureExamples": [
+        "ps-01",
+        "ps-04",
+        "ps-06",
+        "ps-08"
+      ],
+      "notes": "T1543 완화책 M1045(정상 서명된 서비스 드라이버만 등록·실행)도 서명 확인을 권합니다. ps-11(설명만 변경)과 ps-16(같은 파일로 재시작)은 실행 파일이 바뀌지 않아 이 패턴에 넣지 않았습니다."
+    },
+    {
+      "id": "unfamiliar_scheduled_task",
+      "name": "낯선 예약 작업",
+      "technique": "T1053.005",
+      "condition": "처음 보거나 이름이 임의 문자열인 예약 작업이 임시 폴더처럼 평소와 다른 경로의 프로그램을 실행한다.",
+      "fields": [
+        "data.srcip",
+        "data.srcuser",
+        "data.path",
+        "rule.description",
+        "timestamp"
+      ],
+      "evidence": "T1053 탐지(AN0258): schtasks.exe 등으로 예약 작업을 만들거나 바꾼 뒤 그 작업에 묶인 평소와 다른 프로세스가 실행되는 것을 탐지한다.",
+      "source": "https://attack.mitre.org/techniques/T1053/",
+      "fixtureExamples": [
+        "ps-02",
+        "ps-05",
+        "ps-07"
+      ],
+      "notes": "T1053.005 설명: 공격자는 Windows 작업 스케줄러로 시스템 시작 때나 정해진 시각에 프로그램을 실행해 지속성을 얻을 수 있습니다. 수업 폴더의 작업(ps-09, ps-12, ps-15)은 평소와 다른 실행이라는 근거가 없어 넣지 않았습니다."
+    },
+    {
+      "id": "startup_folder_change",
+      "name": "시작 폴더 변경",
+      "technique": "T1543.003",
+      "condition": "사용자 시작 폴더(Startup)나 시작 프로그램 항목에 평소 목록에 없는 프로그램이 추가되고, 그 프로그램이 임시 폴더 같은 평소와 다른 경로에 있거나 다른 지속성 신호와 함께 나타난다.",
+      "fields": [
+        "data.srcip",
+        "data.srcuser",
+        "data.path",
+        "rule.description",
+        "timestamp"
+      ],
+      "evidence": "T1543.003 사례: FIN7이 새 Windows 서비스를 만들고 시작 폴더(startup directories)에 넣어 지속성을 얻었다.",
+      "source": "https://attack.mitre.org/techniques/T1543/003/",
+      "fixtureExamples": [
+        "ps-03",
+        "ps-07"
+      ],
+      "notes": "근거 한 줄(evidence)은 카드가 정한 T1543 범위 안의 사례(T1543.003, FIN7)이며 간접 근거입니다. 이를 보완하려고 시작 폴더를 직접 다루는 T1547.001을 보조 근거(supportingEvidence)로 더했습니다(학생 결정, 2026-10-14). 시작 폴더 변경 1건만 있고 이어서 실행된 기록이 없는 ps-14는 애매한 경보로 남깁니다.",
+      "supportingEvidence": "T1547.001: 공격자는 시작 폴더에 프로그램을 넣거나 레지스트리 실행 키로 가리켜 지속성을 얻을 수 있고, 그 프로그램은 사용자가 로그인할 때 실행된다. 탐지(AN1032)는 평소와 다른 경로의 실행 파일을 함께 본다.",
+      "supportingSource": "https://attack.mitre.org/techniques/T1547/001/"
+    }
+  ],
+  "excluded": [
+    {
+      "item": "수업 중 만든 예약 작업, 수업 과제와 비슷한 이름의 예약 작업(ps-09, ps-12, ps-15)",
+      "reason": "실행 경로가 수업 폴더이고 평소와 다른 프로세스가 실행됐다는 기록이 없어, AN0258의 조건에 맞는다는 근거가 없습니다. 판정 코드에서는 애매한 경보로 남깁니다."
+    },
+    {
+      "item": "수업 도구 이름의 시작 항목, 서명을 아직 모름(ps-10)",
+      "reason": "서명이 없다는 사실도, 평소와 다른 경로라는 사실도 확인되지 않았습니다."
+    },
+    {
+      "item": "서비스 설명만 변경, 같은 파일로 서비스 재시작(ps-11, ps-16)",
+      "reason": "서비스의 실행 파일이 바뀌지 않아 AN1527의 조건(서명 없거나 비정상 경로의 실행 파일)에 맞지 않습니다."
+    },
+    {
+      "item": "임시 폴더에 실행 파일만 생기고 서비스·예약 작업 등록은 없음(ps-13)",
+      "reason": "T1543·T1053은 서비스나 예약 작업을 통한 실행을 다룹니다. 파일이 생긴 것만으로는 이 기법의 근거가 없습니다."
+    },
+    {
+      "item": "시작 폴더 변경 1건만 있고 실행 기록이 없음(ps-14)",
+      "reason": "간접 근거인 시작 폴더 패턴에 다른 지속성 신호가 함께 있지 않아 명확하다고 할 근거가 부족합니다."
+    }
+  ]
+}
