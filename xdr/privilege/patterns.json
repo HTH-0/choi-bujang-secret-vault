@@ -1,0 +1,112 @@
+{
+  "schema": "aleph.xdr.patterns.v1",
+  "moduleKey": "privilege",
+  "basis": {
+    "techniques": [
+      {
+        "technique": "T1068",
+        "name": "Exploitation for Privilege Escalation",
+        "source": "https://attack.mitre.org/techniques/T1068/"
+      },
+      {
+        "technique": "T1078",
+        "name": "Valid Accounts",
+        "source": "https://attack.mitre.org/techniques/T1078/",
+        "subTechnique": "T1078.003 Local Accounts",
+        "subSource": "https://attack.mitre.org/techniques/T1078/003/"
+      }
+    ],
+    "retrievedAt": "2026-10-14",
+    "note": "근거 문장은 공식 ATT&CK 페이지의 내용을 한국어로 줄여 쓴 것입니다. 원문 그대로가 아니므로 출처 페이지에서 직접 확인하세요.",
+    "additional": {
+      "technique": "T1098.007",
+      "name": "Account Manipulation: Additional Local or Domain Groups",
+      "source": "https://attack.mitre.org/techniques/T1098/007/",
+      "retrievedAt": "2026-10-14",
+      "note": "관리자 그룹 추가 패턴의 근거입니다. 카드가 정한 근거(T1068, T1078)에 관리자 그룹 추가를 다루는 문장이 없어, 보너스 xdr-05 과정에서 학생 결정으로 더했습니다(2026-10-14)."
+    }
+  },
+  "caveat": "ATT&CK 페이지에는 건수·규칙 수준·시각 같은 숫자 기준이 없습니다. 이 파일에는 숫자 기준을 넣지 않았고, 기준은 판정 코드가 경보 값을 보고 따로 정해야 합니다. 연습 경보의 시각 값은 모두 오전 9시~오후 4시(한국 시각) 안에 있어서, '업무 시간 밖'은 시각 값이 아니라 경보 설명으로만 드러납니다.",
+  "patterns": [
+    {
+      "id": "admin_group_addition",
+      "name": "관리자 그룹 추가",
+      "technique": "T1098.007",
+      "condition": "평범한 계정이 관리자(Administrators) 그룹에 추가된다. 원격 주소에서 추가되거나, 한 주소에서 여러 계정이 추가되거나, 빠졌던 계정이 곧바로 다시 추가되면 더 뚜렷하다.",
+      "fields": [
+        "data.srcip",
+        "data.srcuser",
+        "data.group",
+        "data.count",
+        "rule.description",
+        "timestamp"
+      ],
+      "evidence": "T1098.007 탐지(AN0865): Administrators 같은 권한 있는 로컬·도메인 그룹에 사용자나 기기 계정을 무단으로 추가하는 일을 탐지한다.",
+      "source": "https://attack.mitre.org/techniques/T1098/007/",
+      "fixtureExamples": [
+        "pv-01",
+        "pv-04",
+        "pv-05",
+        "pv-07",
+        "pv-09"
+      ],
+      "notes": "보너스 xdr-05 과정에서 학생 결정으로 T1098.007 근거를 더해 추가했습니다(2026-10-14). 처음에는 카드가 정한 근거(T1068·T1078)에 직접 문장이 없어 제외했습니다. 같은 페이지에 APT3·Dragonfly가 계정을 관리자 그룹에 넣어 높은 권한을 유지한 사례가 있습니다. 관리자가 아닌 그룹(pv-11 과제 그룹, pv-15 새 수업 그룹, pv-17 설명만 변경)은 이 패턴에 넣지 않습니다."
+    },
+    {
+      "id": "unfamiliar_admin_command",
+      "name": "처음 보는 관리자 명령·권한 전환",
+      "technique": "T1078",
+      "condition": "처음 보는 주소, 방금 권한을 얻은 평범한 계정, 또는 다른 계정의 권한으로 관리자 명령이 실행되거나 세션 권한이 관리자로 바뀐다.",
+      "fields": [
+        "data.srcip",
+        "data.srcuser",
+        "rule.description",
+        "timestamp"
+      ],
+      "evidence": "T1078 탐지(AN1543): 정상 계정의 오용을 비정상 로그온 패턴, 평소와 다른 위치·시간의 활동으로 탐지한다.",
+      "source": "https://attack.mitre.org/techniques/T1078/",
+      "fixtureExamples": [
+        "pv-02",
+        "pv-03",
+        "pv-04",
+        "pv-06",
+        "pv-07",
+        "pv-08"
+      ],
+      "notes": "세션 권한 전환(pv-06)과 다른 계정 권한으로 실행(pv-08)은 T1068 탐지(AN1419)의 '상승 시도 뒤 평소와 다른 프로세스·토큰(권한) 동작'과도 맞습니다. 평소 주소에서 한 번 실행된 관리자 명령(pv-12)과 실패로 끝난 명령(pv-16)은 평소와 다른 활동이라는 근거가 없어 넣지 않았습니다."
+    },
+    {
+      "id": "off_hours_privilege_use",
+      "name": "업무 시간 밖 권한 사용",
+      "technique": "T1078.003",
+      "condition": "업무(수업) 시간 밖이라고 드러난 때에 관리자 권한을 쓰거나 관리자 명령을 실행한다.",
+      "fields": [
+        "data.srcip",
+        "data.srcuser",
+        "rule.description",
+        "timestamp"
+      ],
+      "evidence": "T1078.003 탐지(AN1137): 로컬 계정을 평소와 다르게 쓰는 로그인, 특히 업무 시간 밖의 사용을 탐지한다.",
+      "source": "https://attack.mitre.org/techniques/T1078/003/",
+      "fixtureExamples": [
+        "pv-03",
+        "pv-07"
+      ],
+      "notes": "T1078 탐지(AN1545)도 평소와 다른 시각의 로그인과 뒤따르는 예상 밖 프로세스를 봅니다. 업무 시간의 기준(몇 시부터 몇 시까지)은 ATT&CK에 없습니다. 수업 시간에 일어난 권한 상승(pv-10, pv-14)은 이 패턴에 넣지 않았습니다."
+    }
+  ],
+  "excluded": [
+    {
+      "item": "권한 상승 창이 떴다가 취소됨, 수업 중 권한 상승 1건이고 이어진 명령 없음(pv-10, pv-14)",
+      "reason": "상승이 끝나지 않았거나 뒤따른 활동이 없어 AN1419·AN1543의 '평소와 다른 동작' 근거가 없습니다. 판정 코드에서는 애매한 경보로 남깁니다."
+    },
+    {
+      "item": "관리자가 아닌 그룹 추가, 새 수업 그룹, 그룹 설명만 변경(pv-11, pv-15, pv-17)",
+      "reason": "권한 있는 그룹이 아니고 권한 사용도 없습니다."
+    },
+    {
+      "item": "평소 주소의 관리자 명령 1건, 실패로 끝난 관리자 명령 1건, 계정 종류 조회만(pv-12, pv-16, pv-13)",
+      "reason": "처음 보는 주소·시간 같은 평소와 다른 활동이 드러나지 않았습니다."
+    }
+  ]
+}
