@@ -70,6 +70,15 @@ await check('실측 행은 모두 자기 attackId의 alephEvidence 요청이 있
   assert.equal(recordCalls.every((c) => c.evidence && typeof c.evidence.caseId === 'string'), true);
   assert.equal(recordCalls.some((c) => c.href.includes(recordCalls[0].evidence.requestKey)), false, '요청 ID를 URL에 넣지 않음');
 });
+await check('점검 하나에 요청은 한 번이고, observed는 심판이 확인할 수 있는 형식뿐이다', () => {
+  const VERIFIABLE = /^HTTP \d{3}(?:; jsonArrayLength=\d+)?(?:; jsonReady=(?:true|false))?$/u;
+  for (const item of records) {
+    if (item.result === 'not_run') { assert.ok(item.observed.startsWith('미실행:'), item.attackId); continue; }
+    assert.equal(item.requestIds.length, 1, item.attackId);
+    assert.equal(recordCalls.filter((c) => c.evidence?.caseId === item.attackId).length, 1, item.attackId);
+    assert.match(item.observed, VERIFIABLE, item.attackId);
+  }
+});
 await check('제출 묶음 점검은 기록과 1:1이고 형식이 맞다', () => {
   assert.deepEqual(attempts.map((a) => a.attackId), records.map((r) => r.attackId));
   assert.equal(new Set(attempts.map((a) => a.attackId)).size, attempts.length);

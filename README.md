@@ -34,10 +34,10 @@
 ### 제작 2: 정상·금지 요청 표를 만드는 절차
 
 1. 배포가 끝난 뒤 `npm run ops:record`를 실행합니다. [src/attack-check.mjs](src/attack-check.mjs)의 점검을 실제 배포 주소에 **GET으로만** 보내고, 결과를 `ops/ops-record.json`에 씁니다.
-2. 표의 칸: 단계, 정상/금지, 점검 이름, 기대 결과, 실제 API 결과(상태 코드 등 관측한 사실), 판정(`blocked` 금지 요청이 거부됨 / `allowed` 정상 요청이 허용됨 / `unexpected` 기대와 다름 / `not_run` 보내지 않음), 요청 ID, 확인 시각입니다.
-3. 요청 ID는 요청마다 새로 만든 UUID입니다. 같은 값을 요청의 `alephEvidence`(`{ caseId: 점검 이름, requestKey: 요청 ID }`)에 실어, 심판 실행기가 어느 점검의 요청인지 기록할 수 있게 합니다. 이 값은 요청 헤더나 URL에 넣지 않습니다.
+2. 표의 칸: 단계, 정상/금지, 점검 이름, 기대 결과, 실제 API 결과(심판이 확인할 수 있는 형식만: `HTTP 401`, `HTTP 200; jsonReady=true`, `HTTP 200; jsonArrayLength=0`), 판정(`blocked` 금지 요청이 거부됨 / `allowed` 정상 요청이 허용됨 / `unexpected` 기대와 다름 / `not_run` 보내지 않음), 요청 ID, 확인 시각입니다.
+3. 점검 하나에 요청은 한 번만 보냅니다. 요청 ID는 요청마다 새로 만든 UUID입니다. 같은 값을 요청의 `alephEvidence`(`{ caseId: 점검 이름, requestKey: 요청 ID }`)에 실어, 심판 실행기가 어느 점검의 요청인지 기록할 수 있게 합니다. 이 값은 요청 헤더나 URL에 넣지 않습니다.
 4. 6~9단계 행은 `GET /api/checks?case=<이름>`이 고정된 가상 입력([src/rule-check.mjs](src/rule-check.mjs))으로 판정기·탐지 규칙을 실행한 HTTP 응답입니다. 실제 사용자 기기, 실제 사건, 실제 회수가 아닙니다.
-5. 보내지 않은 점검은 `observed`를 「미실행:」으로 시작하고 판정을 `not_run`으로 둡니다. 통과로 세지 않습니다. 지금 미실행인 것: 로그인 없는 쓰기 요청(격리 환경은 GET·HEAD만 허용), A 로그인 본인 메모 CRUD, B 로그인으로 A 메모 접근, 메모 한 건 복원(로그인과 POST 필요).
+5. 보내지 않은 점검은 `observed`를 「미실행:」으로 시작하고 판정을 `not_run`으로 둡니다. 통과로 세지 않습니다. 지금 미실행인 것은 두 행입니다: `anonymous_write`(로그인 없는 쓰기 요청, 격리 환경은 GET·HEAD만 허용), `login_required`(A 로그인 본인 메모 CRUD, B 로그인으로 A 메모 접근, 메모 한 건 복원: 로그인과 쓰기 요청 필요).
 6. 기록을 확인하고 `ops/ops-record.json`을 커밋합니다. 제출 묶음(`npm run bundle`)은 같은 점검을 다시 실행해 같은 점검 이름과 결과를 냅니다. 작전실 수치는 이 기록에서 셉니다.
 7. 마지막 총공세의 41종 공격 방어는 심판이 판정합니다. 이 표는 그 41종 목록이 아니며, 이 표의 결과를 41종 통과로 쓰지 않습니다.
 
@@ -59,7 +59,7 @@
    |---|---|---|
    | `npm run decider:test` | 4개 항목이 「통과」로 나옵니다. | 미등록 기기의 가상 요청은 `deny`입니다. |
    | `npm run detect:test` | 6개 항목이 「통과」로 나옵니다. | 정확히 120건, 사용자 분산, 10분 밖으로 흩어진 조회는 제안하지 않습니다. |
-   | `npm run checks:test` | 12개 항목이 「통과」로 나옵니다. | 쓰기 메서드 요청 0건, 모르는 `case`는 400, 기록이 없으면 수치 없이 미실행입니다. |
+   | `npm run checks:test` | 13개 항목이 「통과」로 나옵니다. | 쓰기 메서드 요청 0건, 점검당 요청 2회 이상 0건, 모르는 `case`는 400, 기록이 없으면 수치 없이 미실행입니다. |
    | `npm run test:r5` | 통과 2개, 실패 0개입니다. | 없음 |
    | `node --test test/xdr-run.test.mjs` | 통과 3개입니다. | 없음 |
    | `npm run test:package` | 통과 2개, 실패 1개입니다. | 실패 1개는 이전부터 있던 것으로 `package/baseline-functions.json`에 `api/` 함수가 없기 때문입니다. |
@@ -76,7 +76,7 @@
 8. 배포가 끝나면 `npm run ops:record`로 점검 기록을 만들고(위 「제작 2」), 기록을 커밋·푸시합니다.
 9. 배포 주소를 브라우저로 열어 「탈환 작전실」을 봅니다.
    - 정상 결과: 수치가 `ops/ops-record.json`의 `counts`와 같고, 표가 기록의 행과 같습니다. 「기대와 다름」은 0입니다.
-   - 거부되어야 할 결과: 표의 금지 행(로그인 없는 목록, 위조 토큰, 쿼리·헤더 신원, 원본 직접 요청, 로그인 없는 복구 경로, 위조 기기 신호)이 모두 「거부됨(실측)」입니다.
+   - 거부되어야 할 결과: 표의 금지 행(로그인 없는 목록, 위조 토큰, 쿼리 신원, 헤더 신원, 원본 직접 요청 두 가지, 로그인 없는 복구 경로, 기기 신호 없음, 위조 기기 신호)이 모두 「거부됨(실측)」입니다.
    - 로그인한 뒤 「작전실 다시 확인」을 누르면 복구 칸에 본인 백업 건수와 지문이 더해집니다. Vercel Logs의 `"event":"checks"` 줄의 `total`·`blocked`·`allowed`·`unexpected`·`notRun`·`backups`·`fingerprint`가 화면 값과 같아야 합니다.
 10. 제출 묶음은 `bundle-notes.json`에 설명을 적고 `npm run bundle`로 만듭니다. 커밋하지 않은 변경이 있으면 멈춥니다. `bundle-notes.json`과 `artifacts/submission.json`은 커밋하지 않습니다.
 
@@ -102,12 +102,12 @@
 
 | 시험 | 결과 | 구분 |
 |---|---|---|
-| `npm run decider:test` / `detect:test` / `checks:test` | 4개 / 6개 / 12개 통과 | 실행 |
+| `npm run decider:test` / `detect:test` / `checks:test` | 4개 / 6개 / 13개 통과 | 실행 |
 | `npm run test:r5` / `node --test test/xdr-run.test.mjs` | 2개 / 3개 통과 | 실행 |
 | `npm run test:package` | 2개 통과, 1개 실패(이전부터 있던 baseline-functions 불일치) | 실행 |
 | 판정기 계약 점검(18개 이름만 읽는지, 응답 5항목과 `ruleIds`) | 가상 요청 8종 모두 형식이 맞았고, `role`·`identity`·`device`·`geo`를 섞어도 읽지 않았습니다. | 실행(일회용 스크립트) |
 | 새 폴더에서 `npm install` | 오류 없이 끝났고 취약점 0건이었습니다. | 실행 |
-| Chrome 화면 대조(로컬, 가짜 배포로 만든 기록) | 화면 수치 5개와 표 20행이 `/api/checks` 응답과 같았습니다. 메모 본문 없음. | 실행 |
+| Chrome 화면 대조(실제 배포) | 화면 수치 5개와 표 20행이 배포된 `/api/checks` 응답과 같았습니다. 메모 본문 없음. | 실행 |
 | 실제 Supabase 로그인 뒤 복구 칸의 백업 건수·지문, Vercel Logs 대조 | 해당 없음 | **미실행** |
 | 설치형 앱 설치·오프라인 실행 | 해당 없음 | **미실행** |
 | 엔진의 사건 전달·접속 회수, 서버의 기기 강제, 앱 서명 검증 | 해당 없음 | **미실행**(이 저장소에 구현 없음) |
@@ -119,10 +119,12 @@
 |---|---|---|---|
 | `153c7de` | 0점: 번들이 GET·HEAD 아닌 요청을 보냄 | 로그인 없는 POST·PUT·DELETE와 원본 POST 점검 | 쓰기 요청은 보내지 않고 미실행으로 기록 (`1091ab8`) |
 | `1091ab8` | 45점: `Cannot read properties of undefined (reading 'set')` | 격리 환경 `URL`에 `searchParams`가 없음(같은 오류를 재현해 확인) | 쿼리를 문자열로 붙임 (`22ffe39`) |
-| `22ffe39` | 53점: 「실행 기록 대조」 불일치, `S12_SCREEN_MISMATCH` | 실제로 보낸 9건의 요청에 점검 이름 표시(`alephEvidence`)가 없어 심판이 기록하지 못함. 작전실이 점검 기록이 아닌 코드 상수를 보여 줌. 제작 2(정상·금지 요청 표)를 하지 않았음 | 요청마다 `alephEvidence`와 요청 ID, 제작 2 표(`npm run ops:record`), 작전실 수치를 그 기록에서 셈, 정상 요청 허용 실측 추가 |
+| `22ffe39` | 53점: 「실행 기록 대조」(보낸 요청 기록 없음), `S12_SCREEN_MISMATCH` | 실제로 보낸 9건의 요청에 점검 이름 표시(`alephEvidence`)가 없어 심판이 기록하지 못함. 작전실이 점검 기록이 아닌 코드 상수를 보여 줌. 제작 2(정상·금지 요청 표)를 하지 않았음 | 요청마다 `alephEvidence`와 요청 ID, 제작 2 표(`npm run ops:record`), 작전실 수치를 그 기록에서 셈, 정상 요청 허용 실측 추가 |
+| `0040518` | 53점: 「실행 기록 대조」(observed에 확인할 수 없는 문장, 한 점검에 요청 여러 번), `S12_SCREEN_MISMATCH` | 관측값에 「/data.json을 읽지 못함」, `approved=false` 같은 문장을 썼음. 심판은 HTTP 상태, `bodyBytes`, `jsonArrayLength`, `jsonReady`, `method`, `urlSha256`만 확인함. 세 점검이 요청을 두 번씩 보냄 | 관측값을 `HTTP 401`, `HTTP 200; jsonReady=true` 형식으로만 씀. 점검 하나에 요청 한 번으로 나눔(쿼리·헤더 신원, 공개 설정·원본 읽기, 기기 신호 없음·위조). 미실행 셋은 `login_required` 하나로 합치고, 관측값 형식으로 확인할 수 없는 `deployed_config_published`는 뺌 |
 
 - `alephEvidence`의 모양은 공개 참고 저장소 `ChoiTimo/byteback-sample-pass`(2026-10-11 갱신)에서 확인했습니다. 수업 카드와 시작 틀에는 없는 내용입니다.
-- 점검 목록을 다시 짰습니다. 로그인 없는 쓰기 4건은 한 행(`anonymous_write`, 미실행)으로 합쳤고, `deployed_config_*` 두 행은 하나로, 첫 화면 공개 키 점검은 정상 요청 행(`app_page_no_public_key`)으로 바꿨습니다. 기기 승인 뒤 서명 요청 점검은 구현이 없어 목록에서 뺐습니다(미구현).
+- 점검 목록(20개): 실측 18개, 미실행 2개입니다. 로그인 없는 쓰기 4건은 한 행(`anonymous_write`)으로 합쳤고, 첫 화면 공개 키 점검은 정상 요청 행(`app_page_no_public_key`)으로 바꿨습니다. 기기 승인 뒤 서명 요청 점검은 구현이 없어 목록에서 뺐습니다(미구현).
+- 41종 공격 방어는 마지막 총공세에서 심판이 따로 판정합니다. 지금까지의 12단계 판정 메시지는 기록 형식에 관한 것이었고 41종 공격 이름은 나오지 않았습니다.
 - 이 수정으로 통과하는지는 재제출 결과를 봐야 합니다.
 
 ### 이 절에서 확인한 것과 하지 않은 것
