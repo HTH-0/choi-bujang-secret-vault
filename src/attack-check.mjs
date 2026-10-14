@@ -88,8 +88,8 @@ export async function runAttackChecks(config) {
       }
       const direct = async (attackId, expected, label, method, headers) => {
         if (!readOnly(method)) return { attackId, expected, observed: notSent(method, '원본 자료 주소') };
-        const target = new URL(original);
-        if (method === 'GET') { target.searchParams.set('select', 'id'); target.searchParams.set('limit', '1'); }
+        // 격리 환경의 URL에는 searchParams가 없을 수 있어, 쿼리는 문자열로 붙인다(original은 위에서 쿼리 없음을 확인했다).
+        const target = new URL(method === 'GET' ? `${original.href}?select=id&limit=1` : original.href);
         let code = null;
         const sent = await fetch(target, {
           method, redirect: 'error', signal: AbortSignal.timeout(10000),

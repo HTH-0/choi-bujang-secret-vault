@@ -105,6 +105,7 @@
 | `node --test test/xdr-run.test.mjs` (`package.json`에 명령 없음) | 3개 통과 | 실행 |
 | `npm run test:package` | 2개 통과, 1개 실패(이전부터 있던 baseline-functions 불일치) | 실행 |
 | 판정기 계약 점검(18개 이름만 읽는지, 응답 5항목과 `ruleIds`가 `RULE_IDS` 안에 있는지) | 가상 요청 8종 모두 형식이 맞았고 계약 밖 이름은 읽지 않았습니다. `role`·`identity`·`device`·`geo`를 섞은 요청에서도 그 값은 읽지 않았습니다. | 실행(일회용 스크립트, 저장소에 넣지 않음) |
+| `searchParams`가 없는 가짜 `URL`로 `runAttackChecks` 호출(수정 전 코드는 같은 오류 재현, 수정 후 20개 통과) | 수정 후 점검 20개, 쓰기 메서드 0번, 원본 요청 쿼리 `?select=id&limit=1` 유지 | 실행(일회용 스크립트) |
 | 가짜 `fetch`로 `runAttackChecks` 호출(보낸 요청 메서드 확인) | GET만 보냈고 쓰기 메서드 호출은 0번이었습니다. 점검 20개, `attackId` 중복 없음. | 실행(일회용 스크립트) |
 | 새 폴더에서 `npm install` | 오류 없이 끝났고 취약점 0건이었습니다. | 실행 |
 | Chrome 화면 대조(로컬, 로그인 전) | 화면의 규칙 5개와 「미실행」 3개가 `/api/checks` 계산 결과와 같았습니다. 외부 요청 0건, 브라우저 저장소 비어 있음. | 실행(가짜 서버로 같은 계산 함수를 연결) |
@@ -122,6 +123,13 @@
 - 원인으로 확인한 곳: [src/attack-check.mjs](src/attack-check.mjs)의 점검 4건 `anonymous_create`(POST), `anonymous_update`(PUT), `anonymous_delete`(DELETE), `original_direct_anon_write`(원본 POST)입니다. 이 4건은 요청을 보내지 않고 `observed`를 「미실행」으로 기록하도록 바꿨습니다. `attackId`와 점검 개수 20개는 그대로입니다.
 - 이 4건의 거부 여부는 이제 제출 묶음이 확인하지 못합니다. 토큰 없는 `POST /api/notes`, `PUT`, `DELETE`가 401인지는 학생이 직접 보내 확인해야 하며, 제가 실행해 본 적이 없습니다.
 - 이 수정으로 통과하는지는 재제출 결과를 봐야 합니다.
+
+### 12단계 두 번째 판정 뒤 수정: 격리 환경에서 `searchParams` 없이
+
+- 두 번째 제출(커밋 `1091ab8`)은 45점이었습니다. 조건 4개 중 「제출 묶음 점검 기록」이 맞지 않았고, 첫 오류는 `Cannot read properties of undefined (reading 'set')`이었습니다. 기록 코드는 `S12_SCREEN_MISMATCH`(작전실 수치와 가린 서버 기록이 다름)였습니다.
+- **원인(재현으로 확인)**: [src/attack-check.mjs](src/attack-check.mjs)의 원본 직접 요청이 `new URL(...).searchParams.set(...)`을 썼습니다. `searchParams`가 없는 `URL`을 가짜로 만들어 수정 전 코드를 실행하니 같은 오류 메시지가 그대로 나왔습니다. 격리 환경의 `URL`이 실제로 그런지는 제가 볼 수 없어, 환경이 그렇다는 부분은 추정입니다.
+- **수정**: 쿼리를 문자열로 붙입니다(`?select=id&limit=1`). 요청 주소의 쿼리 부분은 이전과 같고, `searchParams`가 없는 `URL`에서도 점검 20개가 오류 없이 돌아옵니다.
+- **`S12_SCREEN_MISMATCH`는 고치지 않았습니다.** 심판이 어떤 수치를 비교했는지 알 수 없고, 번들 실패 때문에 「실제 API 결과가 없다」고 판정되었을 가능성도 있어 추측으로 고치지 않았습니다. 재제출 결과에서 같은 코드가 나오면 그 메시지에 적힌 값으로 다시 확인합니다.
 
 ### 이 절에서 확인한 것과 하지 않은 것
 
