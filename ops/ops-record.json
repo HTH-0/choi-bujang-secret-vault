@@ -1,5 +1,271 @@
 {
-  "schema": "byteback.ops-record.pending",
-  "note": "아직 npm run ops:record를 실행하지 않았습니다. 작전실은 이 상태를 미실행으로 표시합니다.",
-  "rows": []
+  "schema": "byteback.ops-record.v1",
+  "step": 12,
+  "commit": "20f014dd0e50f73832f1d98198ec76af9b0f5102",
+  "checkedAt": "2026-10-14T01:12:06.307Z",
+  "note": "실제 배포에 GET으로 보낸 점검의 기록입니다. 6~9단계 행은 고정된 가상 입력의 판정 결과이며 실제 사용자 기기나 사건이 아닙니다. not_run은 보내지 않은 점검입니다. 41종 공격 방어는 심판이 판정합니다.",
+  "counts": {
+    "total": 20,
+    "blocked": 12,
+    "allowed": 4,
+    "unexpected": 0,
+    "notRun": 4
+  },
+  "rows": [
+    {
+      "attackId": "static_data_json_notes",
+      "stage": 2,
+      "kind": "deny",
+      "area": "access",
+      "expected": "정적 /data.json에 가상 메모가 없음 (404 또는 메모 없음)",
+      "observed": "/data.json을 읽지 못함 (HTTP 404)",
+      "result": "blocked",
+      "requestIds": [
+        "e15f6ec8-61cf-4cc4-bfd4-4f571ebf9b0d"
+      ],
+      "checkedAt": "2026-10-14T01:12:01.167Z"
+    },
+    {
+      "attackId": "anonymous_list_read",
+      "stage": 3,
+      "kind": "deny",
+      "area": "access",
+      "expected": "로그인 없는 GET /api/notes가 자료 없이 401로 거부됨",
+      "observed": "GET /api/notes HTTP 401",
+      "result": "blocked",
+      "requestIds": [
+        "fc92b14b-269f-4866-9b4d-a2b0c46102cd"
+      ],
+      "checkedAt": "2026-10-14T01:12:01.474Z"
+    },
+    {
+      "attackId": "forged_token_list_read",
+      "stage": 3,
+      "kind": "deny",
+      "area": "access",
+      "expected": "위조 토큰을 붙인 GET /api/notes가 자료 없이 401로 거부됨",
+      "observed": "위조 토큰 GET /api/notes HTTP 401",
+      "result": "blocked",
+      "requestIds": [
+        "075fd38b-ee62-4a3f-91a5-f40e94f228f3"
+      ],
+      "checkedAt": "2026-10-14T01:12:02.003Z"
+    },
+    {
+      "attackId": "anonymous_write",
+      "stage": 3,
+      "kind": "deny",
+      "area": "access",
+      "expected": "로그인 없는 POST·PUT·DELETE /api/notes가 401로 거부됨",
+      "observed": "미실행: 제출 묶음은 GET·HEAD만 보낼 수 있어 쓰기 요청을 보내지 않음. 로컬에서 직접 보내 확인해야 함",
+      "result": "not_run",
+      "requestIds": [],
+      "checkedAt": null
+    },
+    {
+      "attackId": "identity_hint_ignored",
+      "stage": 4,
+      "kind": "deny",
+      "area": "access",
+      "expected": "쿼리·헤더로 보낸 userId·role이 무시되고 로그인 없는 요청으로 401 거부됨",
+      "observed": "쿼리 신원 HTTP 401 / 헤더 신원 HTTP 401",
+      "result": "blocked",
+      "requestIds": [
+        "32fdc0b3-5f9a-4347-87e2-8df7dce62a5f",
+        "16a5560f-283d-472e-b2ae-d579e9528430"
+      ],
+      "checkedAt": "2026-10-14T01:12:02.460Z"
+    },
+    {
+      "attackId": "login_owner_crud",
+      "stage": 4,
+      "kind": "allow",
+      "area": "access",
+      "expected": "A 로그인으로 자기 메모 읽기·추가·수정·삭제가 허용됨",
+      "observed": "미실행: 로그인 토큰이 필요해 이 스크립트가 보내지 않음. 화면에서 직접 확인해야 함",
+      "result": "not_run",
+      "requestIds": [],
+      "checkedAt": null
+    },
+    {
+      "attackId": "login_b_other_note",
+      "stage": 4,
+      "kind": "deny",
+      "area": "access",
+      "expected": "B 로그인으로 A의 메모 읽기·수정·삭제가 404·403으로 거부됨",
+      "observed": "미실행: A·B 로그인 토큰이 필요해 이 스크립트가 보내지 않음. 두 계정으로 직접 확인해야 함",
+      "result": "not_run",
+      "requestIds": [],
+      "checkedAt": null
+    },
+    {
+      "attackId": "original_direct_no_key",
+      "stage": 5,
+      "kind": "deny",
+      "area": "access",
+      "expected": "키 없는 원본 자료 직접 GET이 401·403으로 거부됨",
+      "observed": "키 없는 원본 GET HTTP 401",
+      "result": "blocked",
+      "requestIds": [
+        "472b2bb1-9e2d-4d45-8571-d8375680e140"
+      ],
+      "checkedAt": "2026-10-14T01:12:02.877Z"
+    },
+    {
+      "attackId": "original_direct_anon_read",
+      "stage": 5,
+      "kind": "deny",
+      "area": "access",
+      "expected": "공개(anon) 키만으로 원본 자료 직접 GET이 401·403으로 거부됨",
+      "observed": "공개 키 원본 GET HTTP 401, 42501",
+      "result": "blocked",
+      "requestIds": [
+        "6b54ecf4-1ab8-4330-a569-0f530b30f014",
+        "cf0a10ae-d342-4251-a77c-19f34ca51f04"
+      ],
+      "checkedAt": "2026-10-14T01:12:03.420Z"
+    },
+    {
+      "attackId": "app_page_no_public_key",
+      "stage": 5,
+      "kind": "allow",
+      "area": "app",
+      "expected": "첫 화면이 열리고(200) HTML에 Supabase 공개 키가 없음",
+      "observed": "첫 화면 HTTP 200, 공개 키 형식 없음",
+      "result": "allowed",
+      "requestIds": [
+        "f0bd4af2-0dcd-4e5a-9f6e-6f7bd61a7715"
+      ],
+      "checkedAt": "2026-10-14T01:12:04.054Z"
+    },
+    {
+      "attackId": "deployed_config_published",
+      "stage": 5,
+      "kind": "allow",
+      "area": "app",
+      "expected": "/aleph.json이 열리고 원본 자료 주소와 허용 경로가 설정과 같음",
+      "observed": "/aleph.json HTTP 200, 원본 주소 같음, 허용 경로 3개",
+      "result": "allowed",
+      "requestIds": [
+        "6ad2cec0-0740-4097-820e-d1853dabdf47"
+      ],
+      "checkedAt": "2026-10-14T01:12:04.283Z"
+    },
+    {
+      "attackId": "registered_device_note_allowed",
+      "stage": 6,
+      "kind": "allow",
+      "area": "decision",
+      "expected": "등록 기기의 GET /notes/:id 가상 요청은 allow",
+      "observed": "가상 입력 HTTP 200, 결과 allow, ready=true",
+      "result": "allowed",
+      "requestIds": [
+        "da692ce0-7392-46b4-830e-d985481bbffb"
+      ],
+      "checkedAt": "2026-10-14T01:12:04.297Z"
+    },
+    {
+      "attackId": "unregistered_device_denied",
+      "stage": 6,
+      "kind": "deny",
+      "area": "decision",
+      "expected": "미등록 기기의 가상 요청은 deny(device_not_registered)",
+      "observed": "가상 입력 HTTP 200, 결과 deny, ready=true",
+      "result": "blocked",
+      "requestIds": [
+        "a3865764-981f-48ed-93e0-f7929805fb50"
+      ],
+      "checkedAt": "2026-10-14T01:12:04.519Z"
+    },
+    {
+      "attackId": "unusual_access_step_up",
+      "stage": 7,
+      "kind": "deny",
+      "area": "decision",
+      "expected": "새벽·처음 보는 네트워크·대량 조회가 겹친 가상 요청은 step_up",
+      "observed": "가상 입력 HTTP 200, 결과 step_up, ready=true",
+      "result": "blocked",
+      "requestIds": [
+        "ff6f2feb-b597-4206-8f68-fde3690b283e"
+      ],
+      "checkedAt": "2026-10-14T01:12:04.731Z"
+    },
+    {
+      "attackId": "other_zone_route_denied",
+      "stage": 8,
+      "kind": "deny",
+      "area": "decision",
+      "expected": "다른 구역(notices) 경로의 가상 요청은 deny",
+      "observed": "가상 입력 HTTP 200, 결과 deny, ready=true",
+      "result": "blocked",
+      "requestIds": [
+        "d6dd54bc-567e-48ea-8c65-9e99998c314e"
+      ],
+      "checkedAt": "2026-10-14T01:12:04.947Z"
+    },
+    {
+      "attackId": "burst_read_revocation",
+      "stage": 9,
+      "kind": "deny",
+      "area": "detection",
+      "expected": "10분 안에 GET 121건인 가상 사건은 회수 제안(propose_revocation)",
+      "observed": "가상 입력 HTTP 200, 결과 propose_revocation, ready=true",
+      "result": "blocked",
+      "requestIds": [
+        "a08a189f-e740-477a-b4ac-76b2192df544"
+      ],
+      "checkedAt": "2026-10-14T01:12:05.159Z"
+    },
+    {
+      "attackId": "restore_without_login",
+      "stage": 10,
+      "kind": "deny",
+      "area": "restore",
+      "expected": "로그인 없는 복구 경로 요청이 자료 없이 거부됨(GET은 405, POST는 보내지 않음)",
+      "observed": "GET /api/restore HTTP 405",
+      "result": "blocked",
+      "requestIds": [
+        "6499a0be-c3ce-42a7-b020-56adde07e602"
+      ],
+      "checkedAt": "2026-10-14T01:12:05.378Z"
+    },
+    {
+      "attackId": "restore_route_one_note",
+      "stage": 10,
+      "kind": "allow",
+      "area": "restore",
+      "expected": "본인 메모 한 건이 백업에서 복원되고 다른 사용자의 복원은 404로 거부됨",
+      "observed": "미실행: 로그인 토큰과 POST 요청이 필요해 이 스크립트가 보내지 않음",
+      "result": "not_run",
+      "requestIds": [],
+      "checkedAt": null
+    },
+    {
+      "attackId": "device_status_not_approved",
+      "stage": 11,
+      "kind": "deny",
+      "area": "device",
+      "expected": "기기 신호가 없거나 위조한 요청에도 서버가 승인 전으로 답함",
+      "observed": "신호 없음 HTTP 200 approved=false / 위조 신호 HTTP 200 approved=false",
+      "result": "blocked",
+      "requestIds": [
+        "2f34f971-a7d4-41b7-9e9f-7ac1325f041a",
+        "df0add84-3c0e-4567-9713-cba63b5f100e"
+      ],
+      "checkedAt": "2026-10-14T01:12:05.889Z"
+    },
+    {
+      "attackId": "ops_room_api",
+      "stage": 12,
+      "kind": "allow",
+      "area": "app",
+      "expected": "작전실 API GET /api/checks가 200으로 점검 기록 수치를 돌려줌",
+      "observed": "GET /api/checks HTTP 200, 형식 맞음",
+      "result": "allowed",
+      "requestIds": [
+        "3ef370c7-5d6b-4e7c-b24b-0b004f16c2b1"
+      ],
+      "checkedAt": "2026-10-14T01:12:06.097Z"
+    }
+  ]
 }
