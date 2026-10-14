@@ -1,27 +1,47 @@
 // 12단계: 탈환 작전실 요약. /api/checks 응답과 서버 기록 한 줄이 같은 값을 쓰도록 계산을 한 곳에 둔다.
-// 각 항목의 status는 두 가지뿐이다: confirmed(이 요청에서 서버가 직접 읽은 값), not_run(확인할 경로가 없거나 실행하지 않음).
+// 수치는 점검 기록(ops/ops-record.json: 실제 배포에 GET으로 보낸 점검의 결과)에서만 센다. 기록에 없는 결과는 만들지 않는다.
+// result 값: blocked(금지 요청이 거부됨), allowed(정상 요청이 허용됨), unexpected(기대와 다름), not_run(보내지 않음).
 // 메모 제목·본문·소유자·사용자 ID·토큰은 입력으로 받지도 않는다. 백업은 건수와 내용 해시만 받는다.
 import { createHash } from 'node:crypto';
 
 const HASH = /^[0-9a-f]{64}$/u;
+const RESULTS = ['blocked', 'allowed', 'unexpected', 'not_run'];
+const AREAS = ['access', 'decision', 'detection', 'restore', 'device', 'app'];
 
-export function buildChecks({ ruleIds, policy, backup }) {
-  const rules = Array.isArray(ruleIds) ? ruleIds.filter((id) => typeof id === 'string') : [];
+export function countRows(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const count = (result) => list.filter((item) => item?.result === result).length;
+  return { total: list.length, blocked: count('blocked'), allowed: count('allowed'), unexpected: count('unexpected'), notRun: count('not_run') };
+}
+
+const cleanRow = (item) => ({
+  attackId: String(item.attackId), stage: Number(item.stage), kind: item.kind === 'allow' ? 'allow' : 'deny',
+  area: AREAS.includes(item.area) ? item.area : 'access', expected: String(item.expected), observed: String(item.observed),
+  result: RESULTS.includes(item.result) ? item.result : 'not_run',
+  requestIds: Array.isArray(item.requestIds) ? item.requestIds.filter((id) => typeof id === 'string') : [],
+  checkedAt: typeof item.checkedAt === 'string' ? item.checkedAt : null,
+});
+
+export function buildChecks({ ruleIds, policy, backup, record }) {
+  const okRecord = record?.schema === 'byteback.ops-record.v1' && Array.isArray(record.rows);
+  const rows = okRecord ? record.rows.map(cleanRow) : [];
+  const area = (name) => countRows(rows.filter((item) => item.area === name));
   const checks = {
-    schema: 'byteback.checks.v1',
-    rules: { status: 'confirmed', source: 'RULE_IDS', count: rules.length, ids: rules },
-    detection: {
-      status: 'not_run', source: 'none',
-      reason: 'no_event_feed',
-      note: '운영 엔진이 검증한 사건을 이 서버로 전달하는 경로가 없어 사건 건수를 세지 않았습니다.',
-      contract: { action: 'propose_revocation', reasonCode: 'burst_read', over: 120, windowMinutes: 10 },
+    schema: 'byteback.checks.v2',
+    record: okRecord
+      ? { status: 'confirmed', source: 'ops/ops-record.json', commit: String(record.commit).slice(0, 12), checkedAt: record.checkedAt, counts: countRows(rows) }
+      : { status: 'not_run', source: 'ops/ops-record.json', reason: 'record_missing', counts: countRows([]) },
+    areas: {
+      decision: area('decision'),
+      detection: area('detection'),
+      revocation: { ...countRows([]), status: 'not_run', note: '접속 회수를 집행하는 경로가 이 저장소에 없어 회수는 실측하지 않았습니다. 탐지 행은 회수 제안까지만 봅니다.' },
+      restore: area('restore'),
+      access: area('access'),
+      device: area('device'),
+      app: area('app'),
     },
-    revocation: {
-      status: 'not_run', source: 'none',
-      reason: 'no_revocation_path',
-      note: '접속을 회수하는 경로와 기록이 없어 회수 상태를 확인하지 않았습니다.',
-      deviceApproved: false,
-    },
+    rows,
+    rules: { source: 'RULE_IDS', note: '코드에 구현된 규칙 이름 목록이며 실측 결과가 아닙니다.', ids: Array.isArray(ruleIds) ? ruleIds.filter((id) => typeof id === 'string') : [] },
     versions: null,
   };
   const policyOk = typeof policy?.sha256 === 'string' && HASH.test(policy.sha256) && typeof policy?.commit === 'string';
@@ -44,11 +64,12 @@ export function buildChecks({ ruleIds, policy, backup }) {
 
 // 서버 기록 한 줄. 화면에 나온 수치와 같은 필드에서만 만든다.
 export function checksLogLine(checks) {
+  const c = checks.record.counts;
   return {
     event: 'checks',
-    rules: checks.rules.count,
-    detection: checks.detection.status,
-    revocation: checks.revocation.status,
+    record: checks.record.status,
+    recordCommit: checks.record.commit ?? null,
+    total: c.total, blocked: c.blocked, allowed: c.allowed, unexpected: c.unexpected, notRun: c.notRun,
     versions: checks.versions.status,
     backups: checks.versions.backupCount ?? null,
     fingerprint: checks.versions.backupFingerprint ?? null,

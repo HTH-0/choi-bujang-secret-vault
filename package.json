@@ -14,7 +14,8 @@
     "restore:apply": "node scripts/restore-apply.mjs",
     "fixture:7": "node scripts/fixture-7.mjs",
     "xdr:run": "node scripts/xdr-run.mjs",
-    "checks:test": "node scripts/checks-test.mjs"
+    "checks:test": "node scripts/checks-test.mjs",
+    "ops:record": "node scripts/ops-record.mjs"
   },
   "engines": {
     "node": ">=22"
