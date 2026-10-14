@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -41,8 +41,8 @@ export async function runAttackChecks(config) {
   const staticObserved = noteCount === null
     ? `/data.json을 읽지 못함 (HTTP ${response.status})`
     : `/data.json 메모 ${noteCount}건, 시작 틀 확인 표시 ${markerPresent ? '있음' : '없음'} (HTTP ${response.status})`;
-  if (config.step >= 3 && config.step <= 11) {
-    // 3~11단계: 로그인 없는 요청과 위조 토큰 요청이 자료 없이 거부되는지 실제로 보낸다.
+  if (config.step >= 3 && config.step <= 12) {
+    // 3~12단계: 로그인 없는 요청과 위조 토큰 요청이 자료 없이 거부되는지 실제로 보낸다.
     // 본문은 비워 보내므로 거부가 깨져도 자료가 바뀌지 않는다. 응답 본문은 기록하지 않고 상태 코드만 남긴다.
     const ghostId = '00000000-0000-4000-8000-000000000000';
     const status = async (method, path, headers = {}) => {

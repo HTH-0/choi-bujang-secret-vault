@@ -62,6 +62,17 @@
       </div>
       <p id="device-request-note" role="status"></p>
     </section>
+    <section class="app-status ops-room" aria-labelledby="ops-title">
+      <h2 id="ops-title">탈환 작전실</h2>
+      <p id="ops-note" role="status">서버 응답을 확인하는 중입니다.</p>
+      <dl>
+        <dt>판정기 규칙</dt><dd id="ops-rules">확인 중입니다.</dd>
+        <dt>탐지 사건</dt><dd id="ops-detection">확인 중입니다.</dd>
+        <dt>회수 상태</dt><dd id="ops-revocation">확인 중입니다.</dd>
+        <dt>복구 버전</dt><dd id="ops-versions">확인 중입니다.</dd>
+      </dl>
+      <button type="button" id="ops-refresh" class="secondary">작전실 다시 확인</button>
+    </section>
     <section class="auth" aria-labelledby="auth-title">
       <h2 id="auth-title">로그인</h2>
       <p id="auth-status" aria-live="polite">로그아웃 상태입니다.</p>
@@ -206,6 +217,39 @@
       } catch (error) { message(error.message); }
     };
 
+    // 12단계: 탈환 작전실. 모든 수치는 GET /api/checks 응답에서만 가져온다. 응답에 없는 값은 화면이 만들어 내지 않는다.
+    // 항목마다 status가 confirmed면 「확인됨」, not_run이면 「미실행」으로 표시한다. 메모 제목과 본문은 응답에 없고 화면에도 그리지 않는다.
+    const opsCells = {
+      rules: document.querySelector('#ops-rules'), detection: document.querySelector('#ops-detection'),
+      revocation: document.querySelector('#ops-revocation'), versions: document.querySelector('#ops-versions'),
+    };
+    const opsNote = document.querySelector('#ops-note');
+    const tag = (item) => (item?.status === 'confirmed' ? '확인됨' : '미실행');
+    const opsText = (checks) => ({
+      rules: `${tag(checks.rules)}: 규칙 ${checks.rules.count}개 (${checks.rules.ids.join(', ')})`,
+      detection: `${tag(checks.detection)}: ${checks.detection.note}`,
+      revocation: `${tag(checks.revocation)}: ${checks.revocation.note} 기기 승인 값은 ${checks.revocation.deviceApproved ? '승인' : '승인 전'}입니다.`,
+      versions: checks.versions.status === 'confirmed'
+        ? `${tag(checks.versions)}: 백업 ${checks.versions.backupCount}건, 지문 ${checks.versions.backupFingerprint ?? '없음'}, 정책 사본 ${checks.versions.policy ? `${checks.versions.policy.commit}/${checks.versions.policy.sha256}` : '없음'}`
+        : `${tag(checks.versions)}: ${checks.versions.note}${checks.versions.policy ? ` 정책 사본 ${checks.versions.policy.commit}/${checks.versions.policy.sha256}` : ''}`,
+    });
+    const loadChecks = async (token) => {
+      try {
+        const response = await fetch('/api/checks', { cache: 'no-store', headers: token ? { Authorization: `Bearer ${token}` } : {} });
+        const checks = response.ok ? await response.json() : null;
+        if (checks?.schema !== 'byteback.checks.v1') throw new Error('bad_checks');
+        const text = opsText(checks);
+        for (const key of Object.keys(opsCells)) opsCells[key].textContent = text[key];
+        opsNote.textContent = '아래 값은 방금 받은 서버 응답입니다. 「미실행」 항목은 확인하지 않았다는 뜻이며 0건이나 정상이라는 뜻이 아닙니다.';
+      } catch {
+        for (const cell of Object.values(opsCells)) cell.textContent = '미실행: 서버 응답을 받지 못했습니다.';
+        opsNote.textContent = '작전실 요약을 받지 못했습니다.';
+      }
+    };
+    document.querySelector('#ops-refresh').addEventListener('click', async () => {
+      loadChecks((await supabase?.auth.getSession())?.data.session?.access_token ?? null);
+    });
+
     const render = (session) => {
       const email = session?.user?.email;
       statusLine.textContent = email ? `로그인됨: ${email}` : '로그아웃 상태입니다.';
@@ -215,6 +259,7 @@
       const token = session?.access_token ?? null;
       if (token === shownToken) return;
       shownToken = token;
+      loadChecks(token);
       notesError.textContent = '';
       if (!token) {
         resetEditor();
@@ -261,6 +306,7 @@
     {
       try {
         await checkDevice();
+        loadChecks(null);
         const authConfig = await loadAuthConfig();
         // 로그인 코드는 외부 라이브러리가 아니라 우리 서버의 /auth-client.js다. 세션은 메모리에만 두고 브라우저 저장소에 넣지 않는다.
         if (typeof window.createByteBackAuth !== 'function') throw new Error('로그인 코드를 불러오지 못했습니다.');

@@ -10,6 +10,116 @@
 
 배포가 끝나면 `/`에서 점령된 가상 자료실을 볼 수 있습니다. 시작 틀에서는 `/data.json`에 같은 가상 메모가 공개됩니다. 이 공개 상태를 확인하는 것이 1단계의 출발점입니다. 1단계 접수와 심판 판정은 포털에서 확인합니다.
 
+## 12단계 현황: 설치·실행·중지·복구 안내
+
+이 절은 이 README가 들어 있는 커밋을 기준으로 합니다. 해시를 글에 적으면 커밋할 때마다 어긋나므로 적지 않았습니다. 재현할 때 `git rev-parse HEAD`로 확인한 값이 곧 기준 커밋입니다. `aleph.config.json`의 `step`은 12입니다. 빌드(`scripts/build-public.mjs`), 배포 식별(`scripts/deployment-identity.mjs`), `src/attack-check.mjs`의 허용 단계에 12를 추가했습니다. 이 셋이 12를 받지 않으면 Vercel 빌드가 멈춥니다. 12단계 전용 직접 점검은 새로 만들지 않았고 11단계 점검이 그대로 이어집니다.
+
+### 누가 만든 것인가
+
+기준은 저장소의 첫 커밋 `312564a`("Initial commit")입니다. 첫 커밋에 있던 파일은 제공 틀이고, 그 뒤에 추가한 파일은 학생 몫입니다.
+
+| 구분 | 파일 | 설명 |
+|---|---|---|
+| ALEPH SDP 엔진 사용 | 엔진·릴레이·심판 서버 | **이 저장소에 코드가 없습니다.** 요청을 판정기로 보내고, 사건을 탐지기로 전달하고, 접속을 회수하고, 점수를 매기는 일은 ALEPH SDP 엔진이 맡습니다. 이 README는 그 동작을 구현했다고 쓰지 않습니다. 심판 접수 주소 `judgeIssuer`는 운영 측이 채운 값이며 바꾸지 않았습니다. |
+| 제공 틀 (그대로) | `src/verify-login.mjs`, `scripts/decider-test.mjs`, `scripts/detect-test.mjs`, `scripts/xdr-run.mjs`, `scripts/fixture-7.mjs`, `scripts/bundle.mjs`, `docs/`, `xdr/fixtures/`, `test/`, `package/` | 로그인 검증, 가상 연습 실행기, 제출 묶음 도구, 계약 문서입니다. 학생이 고치지 않았습니다. |
+| 제공 틀 (학생이 채움) | `src/decider.mjs`, `src/detect.mjs`, `src/attack-check.mjs`, `public/index.html`, `scripts/build-public.mjs`, `scripts/deployment-identity.mjs`, `aleph.config.json`, `vercel.json`, `package.json` | 제공 틀에 빈칸이나 기본값이 있었고 학생이 고쳤습니다. |
+| 학생이 새로 만듦 | `api/notes.js`, `api/notes/[id].js`, `api/restore.js`, `api/checks.js`, `api/device/status.js`, `api/config.js`, `src/notes-api.mjs`, `src/checks.mjs`, `public/auth-client.js`, `public/app-status.js`, `public/sw.js`, `public/offline.html`, `public/manifest.webmanifest`, `scripts/restore-*.mjs`, `scripts/checks-test.mjs`, `restore/safe-policy.json`, `supabase/*.sql`, `xdr/brute-force/*`, `xdr/web-injection/*` | 자료 API, 복구 경로, 접속 앱, 작전실 요약, 복원 도구, DB 설정, XDR 보너스 두 개입니다. |
+| 아직 비어 있음 | `api/ai.js`, `api/threat-intel.js` | 501을 돌려주는 틀 그대로입니다. 구현하지 않았습니다. |
+
+### 학생 판정기 · 탐지 규칙 · 접속 앱 · 자료실
+
+- **판정기** [src/decider.mjs](src/decider.mjs): `decide(request)`가 `allow`, `deny`, `step_up` 중 하나를 돌려줍니다. 규칙 이름은 `starter.deny`, `xdr_bruteforce_block`, `xdr_webinjection_block`, `device_registered`, `step_up_required` 다섯 개입니다. 등록 기기의 `GET /notes/:id`만 허용하고, 복합 이상 접속은 `step_up`, 나머지는 거부합니다. 계약은 [docs/DECIDER_REQUEST.md](docs/DECIDER_REQUEST.md)입니다.
+- **탐지 규칙** [src/detect.mjs](src/detect.mjs): 같은 가명 사용자의 `GET`이 10분 안에 120건을 넘으면 그 사용자 한 명에 대해 `propose_revocation`(`burst_read`)을 제안합니다. 제안만 하고 집행하지 않습니다. 사건 형식은 [docs/DETECT_EVENTS.md](docs/DETECT_EVENTS.md)입니다.
+- **접속 앱** [public/](public/): 설치형 웹앱입니다. 로그인은 외부 라이브러리 없이 `auth-client.js`가 하고 세션은 메모리에만 둡니다. 서비스 워커는 `offline.html` 한 장만 저장합니다. 기기 승인은 서버 응답(`/api/device/status`)으로만 판단하며 지금은 항상 승인 전입니다. 화면의 「탈환 작전실」은 `GET /api/checks` 응답만 보여 주며 확인한 항목과 미실행 항목을 나눠 적습니다.
+- **자료실** [api/](api/): `/api/notes`, `/api/notes/:id`, `/api/restore`는 서버가 검증한 로그인과 소유자 검사로 보호합니다. 서버 전용 키로만 Supabase 테이블(`vault_notes`, `vault_notes_backup`)에 접근합니다.
+
+### 재현 순서 (빈 폴더에서 시작)
+
+환경변수와 SQL을 먼저 준비한 뒤 배포를 확인하는 순서입니다. 값은 어디에도 적지 않았습니다.
+
+1. 저장소를 내려받고 Node 버전을 확인합니다. 22 이상이어야 합니다.
+   ```
+   git clone https://github.com/HTH-0/choi-bujang-secret-vault.git
+   cd choi-bujang-secret-vault
+   node -v
+   git rev-parse HEAD
+   ```
+2. 설치합니다: `npm install`
+3. 로컬 시험을 실행합니다. 모두 가상 요청 연습이며 심판 판정이 아닙니다.
+
+   | 명령 | 정상 결과 | 거부되어야 할 결과 |
+   |---|---|---|
+   | `npm run decider:test` | 4개 항목이 「통과」로 나옵니다. | 미등록 기기의 가상 요청은 `deny`입니다. |
+   | `npm run detect:test` | 6개 항목이 「통과」로 나옵니다. | 정확히 120건, 사용자 분산, 10분 밖으로 흩어진 조회는 제안하지 않습니다. |
+   | `npm run checks:test` | 12개 항목이 「통과」로 나옵니다. | 탐지 사건과 회수 상태는 `not_run`이며 메모 본문은 응답에 없습니다. |
+   | `npm run test:r5` | 통과 2개, 실패 0개입니다. | 없음 |
+   | `npm run test:package` | 통과 2개, 실패 1개입니다. | 실패 1개는 이전부터 있던 것으로 `package/baseline-functions.json`에 `api/` 함수 다섯 개가 없기 때문입니다. |
+4. 빌드를 확인합니다: `npm run build -- --local`. 「2단계부터는 정적 data.json을 배포하지 않습니다.」가 나오면 정상입니다.
+5. Supabase 대시보드의 SQL Editor에서 [supabase/](supabase/)의 SQL을 `2-vault-notes.sql`, `4-vault-notes-rls.sql`, `5-vault-notes-revoke-direct.sql`, `10-vault-notes-backup.sql` 순서로 학생이 직접 검토해 실행합니다.
+6. Vercel 프로젝트의 Settings > Environment Variables 입력란에 세 이름을 직접 넣습니다. 값은 Supabase 대시보드에서 복사하며, 이 저장소와 대화에는 적지 않습니다.
+
+   | 이름 | 용도 | 공개 범위 |
+   |---|---|---|
+   | `SUPABASE_URL` | Supabase 프로젝트 주소 | 서버 |
+   | `SUPABASE_PUBLISHABLE_KEY` | 로그인 화면용 공개 키 | `/api/config`로 화면에 내려갑니다. |
+   | `SUPABASE_SECRET_KEY` | 서버 전용 키 | **서버에만 둡니다.** 화면, 응답, 로그, Git에 넣지 않습니다. |
+7. 변경을 커밋하고 `git push`하면 Vercel이 배포합니다. 배포 주소는 `aleph.config.json`의 `publicAppUrl`입니다.
+8. 배포 주소에서 확인합니다.
+
+   | 요청 | 정상 결과 | 이 README를 쓴 시점에 제가 실제로 보낸 결과 |
+   |---|---|---|
+   | 브라우저로 `/` 열기 | 앱 상태, 탈환 작전실, 로그인 구역이 보입니다. | `/`는 200이었습니다. 작전실 구역은 아직 배포 전이라 못 봤습니다(미확인). |
+   | `GET /api/device/status` | `{"approved":false,"reason":"device_not_registered"}` | 같은 값이 나왔습니다. |
+   | `GET /api/notes` (토큰 없음) | 거부되어야 합니다. 401입니다. | 401이었습니다. |
+   | `POST /api/restore` (토큰 없음) | 거부되어야 합니다. 401입니다. | 401이었습니다. |
+   | `GET /data.json` | 없어야 합니다. 404입니다. | 404였습니다. |
+   | `GET /api/checks` | 규칙 5개 「확인됨」, 나머지 「미실행」 | **404였습니다.** 작전실 코드가 아직 배포되지 않았기 때문이며, 커밋·푸시 뒤에 다시 확인해야 합니다. |
+9. 로그인한 뒤 「작전실 다시 확인」을 누릅니다. 복구 버전에 백업 건수와 지문이 나오면 정상입니다. Vercel Logs의 `"event":"checks"` 줄에서 `backups`, `fingerprint`가 화면 값과 같은지 대조합니다.
+10. 제출 묶음은 `npm run bundle`로 만듭니다. 이 명령은 커밋하지 않은 변경이 있으면 멈춥니다. `bundle-notes.json`과 `artifacts/submission.json`은 커밋하지 않습니다.
+
+### 중지
+
+- **로컬**: 이 저장소의 시험과 빌드는 실행이 끝나면 스스로 종료합니다. 계속 떠 있는 서버 프로세스가 없습니다.
+- **접속을 막기(코드 근거로만 적음)**: Vercel 환경변수에서 `SUPABASE_SECRET_KEY`를 지우고 다시 배포하면 `src/notes-api.mjs`의 `guard`가 `/api/notes`, `/api/restore`, 로그인 확인이 필요한 `/api/checks`에 500(`SERVER_NOT_CONFIGURED`)으로 답합니다. 자료는 열리지 않습니다.
+- **배포 내리기**: Vercel 프로젝트의 Settings에서 도메인을 제거하거나 배포를 삭제합니다. 화면 이름은 Vercel 쪽 변경에 따라 다를 수 있고 제가 실행해 보지 않았습니다.
+- **특정 사용자 접속 끊기**: 이 저장소에는 회수 경로가 없습니다. 운영 엔진의 접속 회수는 연결·시험하지 않았습니다.
+
+### 복구
+
+1. 먼저 무엇이 바뀌었는지 봅니다: `git status`, `git diff`
+2. 안전 정책 사본([restore/safe-policy.json](restore/safe-policy.json))은 커밋 `6e80bf0`에서 만들었습니다. 사본과 현재 정책의 차이는 `npm run restore:preview`로 봅니다. 읽기 전용입니다. 모든 서비스가 「변경 없음」이면 정상입니다.
+3. 한 서비스만 되돌립니다: `npm run restore:apply -- notes`. 기본은 미리보기이고, 화면에 나온 확인 문구를 붙인 `--apply --confirm=...`가 있을 때만 파일을 씁니다. 커밋·푸시·배포는 하지 않으므로 `git diff`를 확인한 뒤 직접 커밋합니다.
+4. 지운 메모 한 건 복원: 로그인한 뒤 `POST /api/restore`에 `{ "id": "<메모 id>" }` 하나만 보냅니다. 본인 메모의 백업이 있을 때만 복원하고, 남의 메모나 없는 id는 같은 404로 거부합니다. 응답에는 복원 여부와 내용 해시만 있고 메모 본문은 없습니다.
+5. `git reset --hard`는 쓰지 않습니다.
+
+### 시험의 실행·미실행 구분
+
+제가 이 커밋의 작업 트리에서 실행한 시험입니다. 모두 가상 요청 연습이며 심판 판정이 아닙니다.
+
+| 시험 | 결과 | 구분 |
+|---|---|---|
+| `npm run decider:test` | 4개 통과 | 실행 |
+| `npm run detect:test` | 6개 통과 | 실행 |
+| `npm run checks:test` | 12개 통과 | 실행 |
+| `npm run test:r5` | 2개 통과 | 실행 |
+| `npm run test:package` | 2개 통과, 1개 실패(이전부터 있던 baseline-functions 불일치) | 실행 |
+| 판정기 계약 점검(18개 이름만 읽는지, 응답 5항목과 `ruleIds`가 `RULE_IDS` 안에 있는지) | 가상 요청 8종 모두 형식이 맞았고 계약 밖 이름은 읽지 않았습니다. `role`·`identity`·`device`·`geo`를 섞은 요청에서도 그 값은 읽지 않았습니다. | 실행(일회용 스크립트, 저장소에 넣지 않음) |
+| 새 폴더에서 `npm install` | 오류 없이 끝났고 취약점 0건이었습니다. | 실행 |
+| Chrome 화면 대조(로컬, 로그인 전) | 화면의 규칙 5개와 「미실행」 3개가 `/api/checks` 계산 결과와 같았습니다. 외부 요청 0건, 브라우저 저장소 비어 있음. | 실행(가짜 서버로 같은 계산 함수를 연결) |
+| `npm run restore:preview` | 모든 서비스가 사본과 같았습니다. | 실행 |
+| 실제 Supabase 로그인과 로그인 뒤 `/api/checks`의 복구 버전 | 해당 없음 | **미실행** |
+| 배포된 작전실 화면과 Vercel Logs의 `"event":"checks"` 줄 대조 | 해당 없음 | **미실행** |
+| 설치형 앱 설치·오프라인 실행 | 해당 없음 | **미실행** |
+| 운영 엔진의 사건 전달·접속 회수, 서버의 기기 강제, 앱 서명 검증 | 해당 없음 | **미실행**(이 저장소에 구현 없음) |
+
+「41종 시험」이라는 목록은 이 저장소에서 찾지 못했습니다. 위 표는 이 저장소에 있는 시험만 셉니다.
+
+### 이 절에서 확인한 것과 하지 않은 것
+
+- 확인함(제가 실행): 위 3번의 시험 결과와 4번의 빌드, 8번 표의 배포 주소 응답. 이 시험은 심판 판정이 아닙니다.
+- 학생이 확인함(제가 실행하지 않음): 백업 SQL(`10-vault-notes-backup.sql`)을 Supabase에서 실행했습니다.
+- **미실행**: 작전실 코드의 배포와 로그인 뒤의 복구 버전 확인, 위 9번의 화면·서버 기록 대조. 실제 Supabase 로그인과 `POST /api/restore` 성공 요청. 설치·오프라인 동작. 서버의 기기 강제와 앱 서명 검증. 운영 엔진의 사건 전달과 접속 회수. `api/ai.js`, `api/threat-intel.js` 구현.
+
 ## 11단계 현황: 나만의 접속 앱을 완성합니다
 
 - `aleph.config.json`의 `step`을 11로 올렸습니다. 빌드(`scripts/build-public.mjs`)와 배포 식별(`scripts/deployment-identity.mjs`)과 `src/attack-check.mjs`가 `step` 11을 받도록 허용 단계에 11을 추가했습니다. 이 셋이 11을 받지 않으면 Vercel 빌드가 멈춥니다.
@@ -50,7 +160,7 @@
 ## 10단계 현황: 백업에서 자료실을 되살립니다
 
 - `aleph.config.json`의 `step`을 10으로 올렸습니다. 빌드(`scripts/build-public.mjs`)와 배포 식별(`scripts/deployment-identity.mjs`)과 `src/attack-check.mjs`가 `step` 10을 받도록 허용 단계에 10을 추가했습니다. 이 셋이 10을 받지 않으면 Vercel 빌드가 멈춥니다.
-- `src/attack-check.mjs`에 점검 `restore_route_one_note`를 **미실행**으로 기록합니다. 이 스크립트는 B 계정의 로그인 토큰을 가질 수 없고, 백업 SQL은 학생이 직접 실행해야 합니다.
+- `src/attack-check.mjs`에 점검 `restore_route_one_note`를 **미실행**으로 기록합니다. 이 스크립트는 B 계정의 로그인 토큰을 가질 수 없습니다. 백업 SQL은 학생이 Supabase에서 실행했다고 확인해 주었고(제가 실행한 것은 아닙니다), 점검은 여전히 미실행입니다.
 - 다시 실행하는 방법: `npm run restore:preview`, `npm run detect:test`, `npm run decider:test`, `npm run test:r5`, `npm run build -- --local`, 커밋 뒤 `npm run bundle`. 복구 뒤 확인 순서는 아래 표를 따릅니다.
 - 이 절은 제작 1(차이만 보기), 제작 2(되돌리는 절차), 제작 3(메모 한 건을 복원하는 POST 경로)입니다. 제작 1·2는 개발 폴더의 정책 파일을 다루고, 제작 3은 배포된 서버 함수가 비공개 백업에서 메모 한 건을 복원합니다.
 - 정책은 서비스별 규칙 묶음으로 봅니다. `notes`(`src/decider.mjs`의 규칙 이름·파일 해시와 `aleph.config.json`의 `allowedRoutes`), `detect`(`src/detect.mjs`), `xdr-brute-force`, `xdr-web-injection`(각 `decide.mjs`·`patterns.json`)입니다. 감사 기록(`xdr/alerts.log`)과 Git 이력은 어느 서비스에도 넣지 않았습니다.
