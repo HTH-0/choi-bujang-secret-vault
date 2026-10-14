@@ -73,7 +73,7 @@
    | `GET /api/notes` (토큰 없음) | 거부되어야 합니다. 401입니다. | 401이었습니다. |
    | `POST /api/restore` (토큰 없음) | 거부되어야 합니다. 401입니다. | 401이었습니다. |
    | `GET /data.json` | 없어야 합니다. 404입니다. | 404였습니다. |
-   | `GET /api/checks` | 규칙 5개 「확인됨」, 나머지 「미실행」 | **404였습니다.** 작전실 코드가 아직 배포되지 않았기 때문이며, 커밋·푸시 뒤에 다시 확인해야 합니다. |
+   | `GET /api/checks` | 규칙 5개 「확인됨」, 나머지 「미실행」 | 첫 작성 때는 404였습니다(작전실 코드 배포 전). 푸시 뒤 다시 보내니 200이었고 규칙 5개 `confirmed`, 탐지 사건·회수 상태·복구 버전 `not_run`이었습니다. |
 9. 로그인한 뒤 「작전실 다시 확인」을 누릅니다. 복구 버전에 백업 건수와 지문이 나오면 정상입니다. Vercel Logs의 `"event":"checks"` 줄에서 `backups`, `fingerprint`가 화면 값과 같은지 대조합니다.
 10. 제출 묶음은 `npm run bundle`로 만듭니다. 이 명령은 커밋하지 않은 변경이 있으면 멈춥니다. `bundle-notes.json`과 `artifacts/submission.json`은 커밋하지 않습니다.
 
@@ -102,8 +102,10 @@
 | `npm run detect:test` | 6개 통과 | 실행 |
 | `npm run checks:test` | 12개 통과 | 실행 |
 | `npm run test:r5` | 2개 통과 | 실행 |
+| `node --test test/xdr-run.test.mjs` (`package.json`에 명령 없음) | 3개 통과 | 실행 |
 | `npm run test:package` | 2개 통과, 1개 실패(이전부터 있던 baseline-functions 불일치) | 실행 |
 | 판정기 계약 점검(18개 이름만 읽는지, 응답 5항목과 `ruleIds`가 `RULE_IDS` 안에 있는지) | 가상 요청 8종 모두 형식이 맞았고 계약 밖 이름은 읽지 않았습니다. `role`·`identity`·`device`·`geo`를 섞은 요청에서도 그 값은 읽지 않았습니다. | 실행(일회용 스크립트, 저장소에 넣지 않음) |
+| 가짜 `fetch`로 `runAttackChecks` 호출(보낸 요청 메서드 확인) | GET만 보냈고 쓰기 메서드 호출은 0번이었습니다. 점검 20개, `attackId` 중복 없음. | 실행(일회용 스크립트) |
 | 새 폴더에서 `npm install` | 오류 없이 끝났고 취약점 0건이었습니다. | 실행 |
 | Chrome 화면 대조(로컬, 로그인 전) | 화면의 규칙 5개와 「미실행」 3개가 `/api/checks` 계산 결과와 같았습니다. 외부 요청 0건, 브라우저 저장소 비어 있음. | 실행(가짜 서버로 같은 계산 함수를 연결) |
 | `npm run restore:preview` | 모든 서비스가 사본과 같았습니다. | 실행 |
@@ -113,6 +115,13 @@
 | 운영 엔진의 사건 전달·접속 회수, 서버의 기기 강제, 앱 서명 검증 | 해당 없음 | **미실행**(이 저장소에 구현 없음) |
 
 「41종 시험」이라는 목록은 이 저장소에서 찾지 못했습니다. 위 표는 이 저장소에 있는 시험만 셉니다.
+
+### 12단계 판정 뒤 수정: 제출 묶음이 쓰기 요청을 보내지 않게
+
+- 12단계 첫 제출(커밋 `153c7de`)에서 심판이 `npm run bundle`을 격리 환경에서 끝까지 실행하지 못했고 0점이었습니다. 이유는 "GET·HEAD가 아닌 요청(POST·PUT 등)을 보낸다"는 것입니다. 격리 환경은 공개 HTTPS 주소로 보내는 GET·HEAD만 허용합니다.
+- 원인으로 확인한 곳: [src/attack-check.mjs](src/attack-check.mjs)의 점검 4건 `anonymous_create`(POST), `anonymous_update`(PUT), `anonymous_delete`(DELETE), `original_direct_anon_write`(원본 POST)입니다. 이 4건은 요청을 보내지 않고 `observed`를 「미실행」으로 기록하도록 바꿨습니다. `attackId`와 점검 개수 20개는 그대로입니다.
+- 이 4건의 거부 여부는 이제 제출 묶음이 확인하지 못합니다. 토큰 없는 `POST /api/notes`, `PUT`, `DELETE`가 401인지는 학생이 직접 보내 확인해야 하며, 제가 실행해 본 적이 없습니다.
+- 이 수정으로 통과하는지는 재제출 결과를 봐야 합니다.
 
 ### 이 절에서 확인한 것과 하지 않은 것
 

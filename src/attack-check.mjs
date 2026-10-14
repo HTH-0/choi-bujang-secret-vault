@@ -53,7 +53,11 @@ export async function runAttackChecks(config) {
       });
       return sent.status;
     };
+    // 격리 환경의 제출 묶음은 GET·HEAD만 보낼 수 있다. 쓰기 요청(POST·PUT·DELETE)이 필요한 점검은 보내지 않고 미실행으로 기록한다.
+    const readOnly = (method) => method === 'GET' || method === 'HEAD';
+    const notSent = (method, target) => `미실행: 제출 묶음은 GET·HEAD만 보낼 수 있어 ${method} ${target} 요청을 보내지 않음. 로컬에서 직접 보내 확인해야 함`;
     const rejected = async (attackId, expected, method, path, headers) => {
+      if (!readOnly(method)) return { attackId, expected, observed: notSent(method, path) };
       const code = await status(method, path, headers);
       return { attackId, expected, observed: code === 401
         ? `${method} ${path} 요청이 로그인 없이 거부됨 (HTTP 401)`
@@ -83,6 +87,7 @@ export async function runAttackChecks(config) {
         } catch { /* 키를 받지 못하면 아래에서 미실행으로 기록한다 */ }
       }
       const direct = async (attackId, expected, label, method, headers) => {
+        if (!readOnly(method)) return { attackId, expected, observed: notSent(method, '원본 자료 주소') };
         const target = new URL(original);
         if (method === 'GET') { target.searchParams.set('select', 'id'); target.searchParams.set('limit', '1'); }
         let code = null;
