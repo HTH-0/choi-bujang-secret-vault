@@ -430,7 +430,8 @@
 
 - 무차별 로그인: `xdr/brute-force/` (패턴 4개, T1110)
 - 웹 주입: `xdr/web-injection/` (패턴 3개 — SQL 구문, `../` 반복, 같은 주소의 주입 표기 반복, T1190). 세 번째는 T1190 페이지가 스크립트 태그를 직접 적지 않아 일반 탐지 문장(비정상 요청·접근 로그의 의심 요청)에 기댄 해석입니다.
-- 다시 실행: `npm run xdr:run -- brute-force` 또는 `npm run xdr:run -- web-injection` → 각 폴더의 `result.json`
+- 알려진 취약점 악용(보너스작전 3): `xdr/known-cve/` (패턴 3개). 근거는 NVD CVE-2021-44228 설명과 ATT&CK T1190(요청 머리글·인자 안의 완전한 원격 조회 구문 두 패턴)입니다. **세 번째 패턴 「알려진 취약점 점검 도구의 흔적」은 보너스작전 3 과정에서 학생 결정으로 ATT&CK T1595.002 근거를 더해 추가했습니다(2026-10-14).** 처음에는 NVD·T1190에 직접 근거 문장이 없어 뺐던 패턴입니다. 점검 흔적만 있으면 탐색 단계로 보고 alert로 둡니다. 확인용 읽기 모듈 `xdr/known-cve/read-alerts.mjs`는 `decide.mjs`가 불러오지 않습니다. 연습 경보 24건의 결과는 block 8 · alert 8 · record 8입니다.
+- 다시 실행: `npm run xdr:run -- brute-force`, `npm run xdr:run -- web-injection`, `npm run xdr:run -- known-cve` → 각 폴더의 `result.json`
 - 연결: `node xdr/<모듈>/respond.mjs`가 block만 만료 시각·근거 경보 번호가 있는 거부 규칙으로 쓰고, block·alert는 `xdr/alerts.log`에 쌓습니다. 판정기(`src/decider.mjs`)가 읽지만, 출발 주소를 주체로 바꾸는 `xdr/subject-map.json`이 없으면 실제로 적용되는 주체는 없습니다.
 - 확신도 기준(0.85 이상 block, 0.5 이상 alert)은 과제가 정했고, 건수·수준 같은 숫자 기준은 연습 경보를 보고 제가 정한 값이며 ATT&CK가 정한 값이 아닙니다.
 

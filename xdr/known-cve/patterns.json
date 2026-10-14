@@ -1,0 +1,102 @@
+{
+  "schema": "aleph.xdr.patterns.v1",
+  "moduleKey": "known-cve",
+  "basis": {
+    "technique": "T1190",
+    "name": "Exploit Public-Facing Application",
+    "source": "https://attack.mitre.org/techniques/T1190/",
+    "vulnerability": "CVE-2021-44228",
+    "vulnerabilitySource": "https://nvd.nist.gov/vuln/detail/CVE-2021-44228",
+    "retrievedAt": "2026-10-14",
+    "note": "근거 문장은 공식 페이지(NVD 설명, ATT&CK T1190)의 내용을 한국어로 줄여 쓴 것입니다. 원문 그대로가 아니므로 출처 페이지에서 직접 확인하세요.",
+    "additional": {
+      "technique": "T1595.002",
+      "name": "Active Scanning: Vulnerability Scanning",
+      "source": "https://attack.mitre.org/techniques/T1595/002/",
+      "retrievedAt": "2026-10-14",
+      "note": "보너스작전 3 과정에서 학생 결정으로 점검 도구 흔적 패턴의 근거로 더했습니다(2026-10-14)."
+    }
+  },
+  "caveat": "NVD와 ATT&CK 페이지에는 반복 횟수·규칙 수준 같은 숫자 기준이 없습니다. 이 파일에는 숫자 기준을 넣지 않았고, 기준은 판정 코드가 경보 값을 보고 따로 정해야 합니다. 경보에 들어 있는 원격 조회 구문은 문서용 표기이므로 이 파일에는 그 구문 전체를 옮기지 않고 모양만 적었습니다.",
+  "patterns": [
+    {
+      "id": "jndi_lookup_in_header",
+      "name": "요청 머리글 안의 원격 조회 구문",
+      "technique": "T1190",
+      "condition": "요청 머리글 값(data.useragent)에 달러 기호와 여는 중괄호 뒤에 jndi: 가 오고, 원격 프로토콜(ldap 등)과 주소가 이어진 뒤 닫는 중괄호로 끝나는 완전한 조회 구문이 들어 있다.",
+      "fields": [
+        "data.srcip",
+        "data.useragent",
+        "data.count",
+        "rule.description",
+        "timestamp"
+      ],
+      "evidence": "CVE-2021-44228: 공격자가 로그 메시지나 그 인자를 제어하면, Log4j2의 메시지 조회 치환이 공격자가 정한 LDAP 등 JNDI 주소에서 코드를 불러와 실행할 수 있다.",
+      "source": "https://nvd.nist.gov/vuln/detail/CVE-2021-44228",
+      "fixtureExamples": [
+        "kc-01",
+        "kc-04",
+        "kc-07",
+        "kc-08"
+      ],
+      "notes": "NVD는 '로그 메시지와 인자'라고만 적고 머리글을 직접 적지 않았습니다. 머리글 값이 로그에 남는다는 연결은 이 파일의 해석입니다. 이 CVE가 T1190(외부 공개 앱 악용)에 속한다는 연결은 T1190 페이지의 사례(APT41 C0017, Magic Hound가 Log4j CVE-2021-44228을 악용해 최초 침투)에 기댑니다."
+    },
+    {
+      "id": "jndi_lookup_in_param",
+      "name": "요청 인자 안의 원격 조회 구문",
+      "technique": "T1190",
+      "condition": "요청 주소의 인자 부분(data.url의 질의 값)에 달러 기호와 여는 중괄호 뒤에 jndi: 가 오고, 원격 프로토콜(ldap 등)과 주소가 이어진 뒤 닫는 중괄호로 끝나는 완전한 조회 구문이 들어 있다.",
+      "fields": [
+        "data.srcip",
+        "data.url",
+        "data.count",
+        "rule.description",
+        "timestamp"
+      ],
+      "evidence": "CVE-2021-44228: Log4j2의 JNDI 기능은 설정·로그 메시지·인자에서 공격자가 정한 LDAP 등 JNDI 주소를 막지 못해, 인자를 제어하는 공격자가 원격 코드를 실행할 수 있다.",
+      "source": "https://nvd.nist.gov/vuln/detail/CVE-2021-44228",
+      "fixtureExamples": [
+        "kc-02",
+        "kc-03",
+        "kc-05",
+        "kc-06",
+        "kc-08"
+      ],
+      "notes": "kc-08은 머리글과 인자에 같은 구문이 함께 있어 두 패턴에 모두 맞습니다. kc-03·kc-06처럼 같은 주소에서 반복된 경우는 T1190 탐지 항목 AN0220(접근 로그의 의심 요청을 감시)과도 맞지만, 반복 횟수의 기준은 어느 페이지에도 없습니다."
+    },
+    {
+      "id": "known_scanner_trace",
+      "name": "알려진 취약점 점검 도구의 흔적",
+      "technique": "T1595.002",
+      "condition": "경보에 알려진 취약점을 찾는 점검(스캐닝) 흔적이 드러난다. 점검 흔적만 있고 완전한 조회 구문이 없으면 공격 시도가 아니라 탐색 단계로 보고 애매한 경보로 남긴다.",
+      "fields": [
+        "data.srcip",
+        "data.url",
+        "data.useragent",
+        "rule.description",
+        "timestamp"
+      ],
+      "evidence": "T1595.002 사례: Magic Hound가 CVE-2021-44228(Log4j)에 취약한 외부 공개 시스템을 찾으려고 넓게 스캐닝했다.",
+      "source": "https://attack.mitre.org/techniques/T1595/002/",
+      "fixtureExamples": [
+        "kc-05",
+        "kc-13"
+      ],
+      "notes": "보너스작전 3 과정에서 학생 결정으로 T1595.002 근거를 더해 추가했습니다(2026-10-14). 처음에는 근거로 정한 NVD 설명과 T1190에 직접 문장이 없어 제외했습니다. kc-05는 완전한 조회 구문과 함께 있어 명확한 공격이고, kc-13은 점검 도구와 비슷한 수업용 프로그램 이름만 있어 애매한 경보입니다."
+    }
+  ],
+  "excluded": [
+    {
+      "item": "CVE 번호 글자만 있는 검색(kc-09, kc-16)",
+      "reason": "NVD 설명의 조건인 '공격자가 넣은 조회 구문'이 없습니다. 취약점 이름을 검색한 것만으로는 악용 시도라는 근거가 없습니다."
+    },
+    {
+      "item": "jndi 단어만, 잘린 조회 조각, 중괄호만 있는 값(kc-10, kc-15, kc-12)",
+      "reason": "완전한 조회 구문이 아니므로 NVD 설명의 원격 주소 조회가 일어날 수 없습니다. 판정 코드에서는 애매한 경보로 남길 대상입니다."
+    },
+    {
+      "item": "라이브러리 이름이 로그에 있는 경우(kc-14)",
+      "reason": "취약한 라이브러리를 쓴다는 사실만으로는 악용 시도의 근거가 없습니다."
+    }
+  ]
+}
