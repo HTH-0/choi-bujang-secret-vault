@@ -109,10 +109,91 @@ function renderIdentityView({ me, devices, sessions } = {}) {
   return root;
 }
 
+// ---- 14단계: 업무 앱 접근 요청 결과 표시(renderDecision) ----
+// 입력: renderDecision({ status, mode, data?, error?, appId }). status는 idle·loading·ok·error.
+// data는 { appId, decision, reason, checkedAt }, decision은 allow·deny·challenge·unknown.
+// 판정 줄은 「판정: 허용(allow)」처럼 한국어와 원래 값을 함께 쓴다. unknown·목록에 없는 값·요청 실패는
+// 허용이나 정상으로 읽히지 않게 「주의」와 「허용되지 않음」을 글자로 붙인다. 요청 실패는 거부 판정과 구분한다.
+// allow는 정책상 허용일 뿐 실제 앱 접속 성공을 보장하지 않고, challenge는 이 앱이 추가 인증을 대신하지 않는다.
+const DECISION_TEXT = { allow: '허용', deny: '거부', challenge: '추가 확인 필요', unknown: '확인 불가' };
+const DECISION_NOTE = {
+  allow: '정책상 접근 허용입니다. 실제 앱 접속 성공을 보장하지 않습니다.',
+  deny: '정책상 접근 거부입니다. 이 앱에는 지금 접속할 수 없습니다.',
+  challenge: '추가 인증 또는 확인이 필요합니다. 이 앱이 확인 절차를 대신 수행하지 않습니다.',
+  unknown: '판정을 확인할 수 없습니다. 허용된 것으로 보지 않습니다.',
+};
+
+// 판정 시각: 받은 원래 값과 한국 시각을 함께 적는다. 읽을 수 없으면 그 사실을 적는다.
+function decisionTime(value) {
+  const raw = textOf(value);
+  if (!raw) return '판정 시각 정보 없음';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return `${raw} (시각 형식을 확인할 수 없음)`;
+  return `${raw} (한국 시각 ${date.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })})`;
+}
+
+function decisionView(input) {
+  const status = input?.status;
+  const data = input?.data;
+  const appId = textOf(input?.appId) ?? textOf(data?.appId);
+  const root = makeNode('section', { attrs: { 'data-testid': 'student-decision-view', 'data-status': status ?? 'unknown', 'aria-label': '업무 앱 접근 요청 결과' } });
+  const note = modeNote(input);
+  if (note) root.append(note);
+  const line = (text, className, attrs) => root.append(makeNode('p', { text, className, attrs }));
+
+  if (status === 'idle') {
+    root.setAttribute('data-decision', 'none');
+    line('앱을 골라 접속을 요청하세요.', 'state state-empty', { role: 'status' });
+    return root;
+  }
+  if (status === 'loading') {
+    root.setAttribute('data-decision', 'pending');
+    line(`판정 확인 중 · 요청한 앱: ${appId ?? '앱 ID 정보 없음'}`, 'state state-loading', { role: 'status' });
+    return root;
+  }
+  if (status === 'error') {
+    root.setAttribute('data-decision', 'request-failed');
+    const message = textOf(input?.error?.message) ?? '서버가 오류 내용을 보내지 않았습니다.';
+    const unverified = UNVERIFIED_ERROR_CODES.has(input?.error?.code);
+    line(`주의 · 요청 실패${unverified ? '(응답 확인 불가)' : ''}: ${message}`, 'state state-error');
+    line('이것은 거부 판정이 아닙니다. 허용된 것도 아닙니다. 필요하면 앱을 골라 직접 다시 요청하세요.', 'muted');
+    if (appId) line(`요청한 앱: ${appId}`);
+    return root;
+  }
+  if (status !== 'ok' || data === null || typeof data !== 'object') {
+    root.setAttribute('data-decision', 'unknown');
+    line('주의 · 판정: 확인 불가(unknown) · 허용되지 않음', 'state state-empty');
+    line(status === 'ok' ? '판정 응답 형식이 계약과 맞지 않습니다.' : '판정 상태 정보를 받지 못했습니다.', 'muted');
+    return root;
+  }
+
+  const raw = typeof data.decision === 'string' && data.decision ? data.decision : 'unknown';
+  const known = Object.hasOwn(DECISION_TEXT, raw) && raw !== 'unknown';
+  root.setAttribute('data-decision', known ? raw : 'unknown');
+  if (known) {
+    line(`${raw === 'deny' ? '주의 · ' : ''}판정: ${DECISION_TEXT[raw]}(${raw})`, raw === 'allow' ? 'state state-ok' : raw === 'deny' ? 'state state-error' : 'state state-loading');
+    line(DECISION_NOTE[raw], 'muted');
+  } else {
+    // unknown과 목록에 없는 값은 모두 확인 불가로 보여 주고, 받은 값이 unknown이 아니면 그 값도 적는다.
+    line(`주의 · 판정: 확인 불가(unknown) · 허용되지 않음${raw !== 'unknown' ? ` · 받은 값: ${raw}` : ''}`, 'state state-empty');
+    line(DECISION_NOTE.unknown, 'muted');
+  }
+  const list = makeNode('dl');
+  for (const [label, value] of [
+    ['앱', appId ?? '앱 ID 정보 없음'],
+    ['판정 이유', textOf(data.reason) ?? '판정 이유 정보 없음'],
+    ['판정 시각', decisionTime(data.checkedAt)],
+  ]) {
+    list.append(makeNode('dt', { text: label }), makeNode('dd', { text: value }));
+  }
+  root.append(list);
+  return root;
+}
+
 export function createStudentView() {
   return {
     renderIdentity(input) { return renderIdentityView(input); },
-    renderDecision() { return '학생 구현 대기: 서버의 판정과 이유를 연결하세요.'; },
+    renderDecision(input) { return decisionView(input); },
     renderEvents() { return '학생 구현 대기: 본인 접속·XDR 기록을 연결하세요.'; },
     renderStatus() { return '학생 구현 대기: 기기·세션·알림과 연결 점검 상태를 구분하세요.'; },
     renderVulnerabilities() { return '학생 구현 대기: 정확한 설치 버전·OSV 출처·조회 시각·부분 결과·조회 실패를 구분하세요.'; },
