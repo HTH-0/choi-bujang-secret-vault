@@ -443,3 +443,12 @@
 [AGENTS.md](AGENTS.md)를 먼저 읽히고 한 번에 한 제작 단위만 요청하세요. 2단계부터는 자료 보호를 구현할 때 `public/data.json`을 복사하는 1단계 빌드 흐름도 함께 바꿔야 합니다. 3단계 이후의 로그인, 허용 경로, 5단계의 원본 API 주소, 6단계 이후 정책 규칙은 해당 단계 원고와 계약에 맞춰 추가합니다. 비밀번호·토큰·서버 전용 키·실제 학생 기록을 코드, Git, 제출 묶음에 넣지 않습니다.
 
 `src/decider.mjs`와 `src/detect.mjs`의 로컬 시험은 반 엔진이나 운영 심판의 결과가 아닙니다. 1단계 이후 제출 묶음 계약 `aleph.defense.submission.v2`는 `scripts/bundle.mjs`에 남아 있으며, 코딩 도구가 해당 단계의 최신 배포 주소와 Git 원격을 맞춘 뒤 사용합니다.
+
+## 13~20단계 학생 문서 안내 (HTH 보안 Agent)
+
+13단계부터는 `on-client` 폴더의 ALEKOV 시작 틀에 `student/extension.mjs`를 구현합니다. 위의 1~12단계 설명과 `on-client`는 별개의 실행 대상입니다.
+
+- 학생 실행 설명서와 시스템 구성도(Mermaid·ASCII·표): [on-client/docs/STUDENT_RUNBOOK.md](on-client/docs/STUDENT_RUNBOOK.md)
+- 실행(앱 폴더 `on-client`에서): `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start-alekov.ps1`, 주소 `http://127.0.0.1:5189/`
+- 예제 자료로 보기: `npm run demo`, 학생 파일 문법 검사: `npm run check`
+- 지원 환경: Windows와 Node.js 22~24(이 PC에서 확인한 버전은 v24.21.0). 실제 계정 연결·AI 연결·조치 집행은 확인하지 못한 항목이며 설명서의 「확인하지 못한 기능」 표에 정리했습니다.
