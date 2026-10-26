@@ -452,3 +452,4 @@
 - 실행(앱 폴더 `on-client`에서): `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start-alekov.ps1`, 주소 `http://127.0.0.1:5189/`
 - 예제 자료로 보기: `npm run demo`, 학생 파일 문법 검사: `npm run check`
 - 지원 환경: Windows와 Node.js 22~24(이 PC에서 확인한 버전은 v24.21.0). 실제 계정 연결·AI 연결·조치 집행은 확인하지 못한 항목이며 설명서의 「확인하지 못한 기능」 표에 정리했습니다.
+- 새 폴더 재현 기록과 릴리스 기록(22단계): [on-client/docs/STUDENT_REPRODUCTION.md](on-client/docs/STUDENT_REPRODUCTION.md). 현재 상태는 검증 중인 버전이며, 학생 직접 재현 중 출력이 없는 항목은 학생 진술로 구분해 적었습니다.
