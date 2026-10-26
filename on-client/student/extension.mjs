@@ -680,7 +680,8 @@ function explanationView(input) {
   if (note) root.append(note);
 
   if (status === 'error') {
-    // event가 null이어도 실패 이유를 먼저 보여 준다. 성공 속성은 붙이지 않는다.
+    // event가 null이면 기록 선택 안내를 먼저 보여 주고, 이어서 실패 이유(근거 부족 등)를 보여 준다. 성공 속성은 붙이지 않는다.
+    if (!eventId) line('보안 기록에서 기록을 먼저 고르세요', 'state state-empty', { role: 'status' });
     const code = safeCode(explanation?.error?.code);
     const reason = EXPLANATION_ERROR_REASON[code] ?? `${aiErrorGroup(code).name}: ${aiErrorGroup(code).todo}`;
     line(`주의 · AI 설명 실패 · 오류 코드: ${code}`, 'state state-error');
