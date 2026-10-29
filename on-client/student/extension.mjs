@@ -654,6 +654,24 @@ function dashboardCards(input) {
 const MEASURE_PATHS = ['/api/me', '/api/apps', '/api/events', '/api/devices', '/api/sessions'];
 const kstTimeText = (iso) => new Date(iso).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
 
+// ---- 내 PC 상태: 브라우저가 일반 권한으로 알려 주는 값만 읽는다(관리자 권한·설치·외부 요청 없음) ----
+// 제공 기능에는 CPU·메모리·디스크를 읽는 경로가 없다. 학생 코드는 브라우저 안에서만 돌므로 읽을 수 있는 값이 정해져 있다.
+// 읽지 못한 값은 숫자를 만들지 않고 「확인 불가」와 이유를 보여 준다. 예시 값은 이 칸에 쓰지 않는다.
+const HISTORY_MAX = 10;
+const MB = 1048576;
+const PC_REASON = {
+  cpu: '브라우저는 CPU 사용률을 알려 주지 않습니다. 읽으려면 서버 코드를 고쳐야 하는데 제공 파일은 고치지 않는 원칙이라 읽지 않았습니다.',
+  disk: '브라우저는 디스크 남은 공간을 알려 주지 않습니다. 브라우저가 알려 주는 저장소 사용량은 이 사이트의 값이며 디스크 여유 공간이 아닙니다.',
+  heap: '이 브라우저는 자바스크립트 메모리 사용량(performance.memory)을 알려 주지 않습니다. Chrome과 Edge에서만 읽힙니다.',
+  device: '이 브라우저는 기기 메모리 총량(navigator.deviceMemory)을 알려 주지 않습니다.',
+};
+
+function readPcState() {
+  const heap = performance.memory?.usedJSHeapSize;
+  const device = navigator.deviceMemory;
+  return { at: new Date().toISOString(), heapMB: Number.isFinite(heap) ? heap / MB : null, deviceGB: Number.isFinite(device) ? device : null };
+}
+
 async function runMeasure(api, measure, onChange) {
   if (measure.running || typeof api?.get !== 'function') return;
   measure.running = true;
@@ -670,18 +688,74 @@ async function runMeasure(api, measure, onChange) {
   }
   measure.running = false;
   measure.at = new Date().toISOString();
+  measure.pc = readPcState();
+  // 비교용 기록은 이 화면의 메모리에만 둔다. 화면을 새로 열면 사라지고 어디에도 저장하거나 보내지 않는다.
+  measure.history.push({ at: measure.at, pc: measure.pc, rows: measure.rows.map((row) => ({ ...row })) });
+  if (measure.history.length > HISTORY_MAX) measure.history.shift();
   onChange?.();
   document.querySelector('[data-measure-button]')?.focus();
 }
 
+const kstClock = (iso) => new Date(iso).toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul' });
+
+// 네 줄: CPU 사용률, 메모리(이 탭), 기기 메모리 총량(참고), 디스크 남은 공간. 값마다 단위와 잰 시각을 붙인다.
+function pcStateList(pc) {
+  const rows = [
+    { key: 'cpu', name: 'CPU 사용률', value: null, unit: '%', always: true },
+    { key: 'heap', name: '메모리 사용량(이 탭의 자바스크립트, PC 전체 아님)', value: pc?.heapMB ?? null, unit: 'MB', digits: 1 },
+    { key: 'device', name: '기기 메모리 총량(브라우저가 알려 준 근사값, 참고)', value: pc?.deviceGB ?? null, unit: 'GB', digits: 0 },
+    { key: 'disk', name: '디스크 남은 공간', value: null, unit: 'GB', always: true },
+  ];
+  const list = makeNode('ul', { attrs: { 'aria-label': '내 PC 상태' } });
+  for (const row of rows) {
+    let text;
+    if (row.value !== null) text = `${row.name}: ${row.value.toFixed(row.digits)} ${row.unit} · 잰 시각 ${kstTimeText(pc.at)}(한국 시각) · 실측(브라우저가 알려 준 값)`;
+    else if (row.always || pc) text = `${row.name}: 확인 불가 · 이유: ${PC_REASON[row.key]}`;
+    else text = `${row.name}: 아직 측정하지 않음`;
+    list.append(makeNode('li', { text, attrs: { 'data-pc': row.key, 'data-available': String(row.value !== null) } }));
+  }
+  return list;
+}
+
+// 직전 측정과 지금 측정을 비교한다. 응답 실패나 읽지 못한 값은 비교하지 않고 그 사실을 적는다.
+function comparisonTable(history) {
+  const prev = history.at(-2);
+  const cur = history.at(-1);
+  const items = [
+    ...MEASURE_PATHS.map((path) => ({ label: `응답 시간 GET ${path}`, unit: 'ms', miss: '응답 실패', read: (entry) => { const row = entry.rows.find((r) => r.path === path); return row?.ok ? row.ms : null; } })),
+    { label: '메모리 사용량(이 탭의 자바스크립트)', unit: 'MB', miss: '확인 불가', read: (entry) => entry.pc?.heapMB ?? null },
+  ];
+  const table = makeNode('table', { attrs: { 'aria-label': '직전 측정과 지금 측정 비교' } });
+  const head = makeNode('thead');
+  const headRow = makeNode('tr');
+  for (const title of ['항목', `직전(${kstClock(prev.at)})`, `지금(${kstClock(cur.at)})`, '차이', '단위']) headRow.append(makeNode('th', { text: title, attrs: { scope: 'col' } }));
+  head.append(headRow);
+  const body = makeNode('tbody');
+  for (const item of items) {
+    const before = item.read(prev);
+    const now = item.read(cur);
+    let diff = '비교 불가';
+    if (before !== null && now !== null) {
+      const gap = now - before;
+      diff = Math.abs(gap) < 0.05 ? '변화 없음' : `${Math.abs(gap).toFixed(1)} ${gap > 0 ? '증가' : '감소'}`;
+    }
+    const row = makeNode('tr', { attrs: { 'data-compare': item.label } });
+    for (const cell of [item.label, before === null ? item.miss : before.toFixed(1), now === null ? item.miss : now.toFixed(1), diff, item.unit]) row.append(makeNode('td', { text: cell }));
+    body.append(row);
+  }
+  table.append(head, body);
+  return table;
+}
+
 function measurePart(context) {
   const { measure, canMeasure, start } = context;
-  const part = makeNode('div', { attrs: { 'data-part': 'measure', role: 'region', 'aria-label': '내 PC 실측' } });
+  const part = makeNode('div', { attrs: { 'data-part': 'measure', role: 'region', 'aria-label': '내 PC 상태' } });
   part.append(
-    makeNode('h3', { text: '내 PC 실측 (응답 시간)' }),
-    makeNode('p', { text: '이 칸의 시간은 이 PC에서 직접 잰 값입니다(실측). 예제 모드에서는 예제 서버가 응답하는 시간이고, 연결이 없을 때는 오류 응답까지 걸린 시간입니다.', className: 'muted' }),
+    makeNode('h3', { text: '내 PC 상태 (실측, 학생 구현)' }),
+    makeNode('p', { text: '제공 기능에는 CPU·메모리·디스크 표시가 없어 학생 코드가 직접 읽습니다. 관리자 권한 없이 브라우저가 알려 주는 값만 쓰며, 이 PC에서 버튼을 눌러 잰 실측입니다. 응답 시간은 예제 모드에서는 예제 서버, 연결이 없을 때는 오류 응답까지 걸린 시간입니다. 이 칸에는 예시 값을 쓰지 않습니다.', className: 'muted' }),
+    pcStateList(measure.running ? null : measure.pc),
   );
-  const button = makeNode('button', { text: measure.running ? '측정 중' : '응답 시간 측정', className: 'btn', attrs: { type: 'button', 'data-measure-button': '' } });
+  const button = makeNode('button', { text: measure.running ? '측정 중' : '내 PC 상태 측정', className: 'btn', attrs: { type: 'button', 'data-measure-button': '' } });
   button.disabled = measure.running || !canMeasure;
   button.addEventListener('click', start);
   part.append(button);
@@ -696,6 +770,15 @@ function measurePart(context) {
       list.append(makeNode('li', { text: `실측 · GET ${row.path} · ${row.ok ? '응답 성공' : `응답 실패(${row.code})`} · ${row.ms.toFixed(1)}ms`, attrs: { 'data-ok': String(row.ok) } }));
     }
     part.append(list, makeNode('p', { text: `측정 시각 ${kstTimeText(measure.at)}(한국 시각) · 1회 측정이며 누를 때마다 값이 달라집니다.`, className: 'muted' }));
+    part.append(makeNode('h4', { text: `추이 비교 (측정 ${measure.history.length}회, 최대 ${HISTORY_MAX}회 보관)` }));
+    if (measure.history.length < 2) {
+      part.append(makeNode('p', { text: '비교하려면 한 번 더 측정하세요. 직전 측정이 없어 아직 비교하지 않습니다.', className: 'state state-empty', attrs: { role: 'status' } }));
+    } else {
+      part.append(
+        comparisonTable(measure.history),
+        makeNode('p', { text: '응답 시간은 누를 때마다 조금씩 달라지는 값이며 차이가 곧 문제를 뜻하지 않습니다. 메모리는 이 탭의 값이고 PC 전체 사용량이 아닙니다. 비교 기록은 이 화면의 메모리에만 있고 화면을 새로 열면 사라집니다.', className: 'muted' }),
+      );
+    }
   }
   return part;
 }
@@ -1207,7 +1290,7 @@ function vulnerabilitiesView(input) {
 
 export function createStudentView({ api, onChange } = {}) {
   const eventFilters = { kind: 'all', app: 'all', access: 'all' };
-  const measure = { running: false, rows: [], at: null };
+  const measure = { running: false, rows: [], at: null, pc: null, history: [] };
   const measureContext = { measure, canMeasure: typeof api?.get === 'function', start: () => runMeasure(api, measure, onChange) };
   return {
     renderIdentity(input) { return renderIdentityView(input); },
