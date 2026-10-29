@@ -139,7 +139,13 @@ function decisionView(input) {
   const root = makeNode('section', { attrs: { 'data-testid': 'student-decision-view', 'data-status': status ?? 'unknown', 'aria-label': '업무 앱 접근 요청 결과' } });
   const note = modeNote(input);
   if (note) root.append(note);
-  const line = (text, className, attrs) => root.append(makeNode('p', { text, className, attrs }));
+  const line = (text, className, attrs) => {
+    const node = makeNode('p', { text, className, attrs });
+    root.append(node);
+    return node;
+  };
+  // 관제 화면처럼 판정 결과 줄을 크게 보여 준다. 글자 내용은 바꾸지 않으므로 색에 기대지 않고 글자로 구분된다.
+  const emphasize = (node) => { node.style.fontSize = '1.4rem'; node.style.fontWeight = '700'; };
 
   if (status === 'idle') {
     root.setAttribute('data-decision', 'none');
@@ -171,13 +177,14 @@ function decisionView(input) {
   const known = Object.hasOwn(DECISION_TEXT, raw) && raw !== 'unknown';
   root.setAttribute('data-decision', known ? raw : 'unknown');
   if (known) {
-    line(`${raw === 'deny' ? '주의 · ' : ''}판정: ${DECISION_TEXT[raw]}(${raw})`, raw === 'allow' ? 'state state-ok' : raw === 'deny' ? 'state state-error' : 'state state-loading');
+    emphasize(line(`${raw === 'deny' ? '주의 · ' : ''}판정: ${DECISION_TEXT[raw]}(${raw})`, raw === 'allow' ? 'state state-ok' : raw === 'deny' ? 'state state-error' : 'state state-loading'));
     line(DECISION_NOTE[raw], 'muted');
   } else {
     // unknown과 목록에 없는 값은 모두 확인 불가로 보여 주고, 받은 값이 unknown이 아니면 그 값도 적는다.
-    line(`주의 · 판정: 확인 불가(unknown) · 허용되지 않음${raw !== 'unknown' ? ` · 받은 값: ${raw}` : ''}`, 'state state-empty');
+    emphasize(line(`주의 · 판정: 확인 불가(unknown) · 허용되지 않음${raw !== 'unknown' ? ` · 받은 값: ${raw}` : ''}`, 'state state-empty'));
     line(DECISION_NOTE.unknown, 'muted');
   }
+  if (input?.mode === 'demo') line(`${EXAMPLE_SOURCE}: 설명용 예제 판정이며 실제 판정이 아닙니다.`, 'tag tag-demo', { 'data-example-notice': '' });
   const list = makeNode('dl');
   for (const [label, value] of [
     ['앱', appId ?? '앱 ID 정보 없음'],
@@ -270,6 +277,55 @@ function eventDetail(event) {
   return box;
 }
 
+// ---- 관제 대시보드 바탕: 기록 추이 ----
+// 받은 기록 전체를 한국 시각 날짜별로 센다(필터와 무관). 막대는 글자(■)와 숫자를 함께 쓰며 서버에 다시 묻지 않는다.
+// 날짜가 3일보다 적으면 추이라고 부르기 어려우므로 부족하다고 알린다. 없는 날짜는 0으로 채우지 않는다.
+const TREND_MAX_DAYS = 14;
+const TREND_MIN_DAYS = 3;
+const TREND_BAR_MAX = 20;
+const kstDateFormat = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' });
+const trendBar = (count) => `${'■'.repeat(Math.min(count, TREND_BAR_MAX))}${count > TREND_BAR_MAX ? '+' : ''}`;
+
+function trendPart(events, input) {
+  const demo = input?.mode === 'demo';
+  const part = makeNode('div', { attrs: { 'data-part': 'trend', role: 'region', 'aria-label': '기록 추이' } });
+  part.append(makeNode('h3', { text: '기록 추이' }), makeNode('p', { text: demo ? EXAMPLE_SOURCE : '서버 응답', className: demo ? 'tag tag-demo' : 'tag' }));
+  const perDay = new Map();
+  let undated = 0;
+  for (const event of events) {
+    const ms = Date.parse(event.at);
+    if (!Number.isFinite(ms)) { undated += 1; continue; }
+    const day = kstDateFormat.format(new Date(ms));
+    perDay.set(day, (perDay.get(day) ?? 0) + 1);
+  }
+  const days = [...perDay.keys()].sort();
+  const shownDays = days.slice(-TREND_MAX_DAYS);
+  part.append(makeNode('p', { text: `집계 대상: 받은 기록 ${events.length}건 · 날짜가 있는 기록 ${events.length - undated}건(${days.length}일)${undated > 0 ? ` · 시각을 읽을 수 없어 제외한 기록 ${undated}건` : ''}`, attrs: { 'data-trend-summary': '' } }));
+  if (days.length < TREND_MIN_DAYS) {
+    part.append(makeNode('p', { text: `추이를 만들기에 기록이 부족합니다(받은 기록 ${events.length}건, 날짜 ${days.length}일). 아래 숫자는 받은 기록만 센 값이며 변화의 방향을 뜻하지 않습니다.`, className: 'state state-empty', attrs: { role: 'status' } }));
+  }
+  part.append(makeNode('h4', { text: `날짜별 건수(한국 시각${days.length > shownDays.length ? `, 최근 ${TREND_MAX_DAYS}일` : ''})` }));
+  const byDay = makeNode('ul', { attrs: { 'aria-label': '날짜별 기록 건수' } });
+  if (shownDays.length === 0) byDay.append(makeNode('li', { text: '날짜를 읽을 수 있는 기록이 없습니다(확인 불가).' }));
+  for (const day of shownDays) {
+    const count = perDay.get(day);
+    const row = makeNode('li', { attrs: { 'data-trend-day': day } });
+    row.append(makeNode('span', { text: `${day} · ${count}건 ` }), makeNode('span', { text: trendBar(count), attrs: { 'aria-hidden': 'true' } }));
+    byDay.append(row);
+  }
+  part.append(byDay, makeNode('h4', { text: '접속 상태 분포' }));
+  const counts = { allowed: 0, denied: 0, unknown: 0 };
+  for (const event of events) counts[Object.hasOwn(counts, event.state?.access) ? event.state.access : 'unknown'] += 1;
+  const dist = makeNode('ul', { attrs: { 'aria-label': '접속 상태 분포' } });
+  for (const key of Object.keys(counts)) {
+    const row = makeNode('li', { attrs: { 'data-trend-access': key } });
+    row.append(makeNode('span', { text: `${labelWithRaw(ACCESS_STATE_TEXT, key)} · ${counts[key]}건 ` }), makeNode('span', { text: trendBar(counts[key]), attrs: { 'aria-hidden': 'true' } }));
+    dist.append(row);
+  }
+  part.append(dist);
+  return part;
+}
+
 function eventsView(input, filters) {
   const status = input?.status;
   const root = makeNode('section', { attrs: { 'data-testid': 'student-events-view', 'data-status': status ?? 'unknown', 'aria-label': '내 접속 기록과 XDR 경보' } });
@@ -318,7 +374,7 @@ function eventsView(input, filters) {
   const count = makeNode('p', { attrs: { role: 'status', 'aria-live': 'polite', 'data-student-event-count': '' } });
   const list = makeNode('ul', { attrs: { 'aria-label': '기록 목록' } });
   const detail = makeNode('div', { attrs: { id: `${formId}-detail` } });
-  root.append(form, count, list, detail);
+  root.append(trendPart(events, input), form, count, list, detail);
   let selectedId = null; // 상세 선택. 새로 그릴 때마다 비어 있다.
 
   const showDetail = () => {
@@ -339,6 +395,11 @@ function eventsView(input, filters) {
         makeNode('p', { text: `${event.id} · ${eventTimeText(event.at)}` }),
         makeNode('p', { text: `종류: ${labelWithRaw(KIND_TEXT, event.kind)} · 앱: ${textOf(event.appId) ?? NO_APP_TEXT}` }),
         makeNode('p', { text: `요약: ${typeof event.summary === 'string' ? event.summary : '요약 없음'}` }),
+        // 목록에서도 상태를 글자로 읽게 한다. 거부된 접속은 「주의」를 붙인다(색만으로 구분하지 않음).
+        makeNode('p', {
+          text: `상태: ${event.state?.access === 'denied' ? '주의 · ' : ''}접속 ${labelWithRaw(ACCESS_STATE_TEXT, event.state?.access)} · 세션 ${statusText(SESSION_STATUS_TEXT, event.state?.session)} · 기기 ${statusText(DEVICE_STATUS_TEXT, event.state?.device)}`,
+          attrs: { 'data-student-event-state': event.state?.access ?? 'unknown' },
+        }),
       );
       const button = makeNode('button', { text: `${event.id} 상세`, attrs: { type: 'button', 'data-student-event-button': event.id, 'aria-controls': detail.id, 'aria-expanded': 'false' } });
       button.addEventListener('click', () => { selectedId = selectedId === event.id ? null : event.id; showDetail(); });
@@ -510,10 +571,141 @@ function diagnosticsPart(resource) {
   return part;
 }
 
-function statusView(input) {
+// ---- 관제 대시보드 바탕: 상태 카드 네 개(기기·세션·알림·진단) ----
+// 카드 값은 제공 화면이 넘긴 자료만 센다. 연결이 없거나 실패한 자료는 숫자를 만들지 않고 「확인 불가」로 둔다.
+// 출처 글자: 「예시 값」(예제 자료, 실제 조회 결과 아님) · 「서버 응답」 · 「연결 없음」 · 「확인 불가」. 색만으로 구분하지 않는다.
+const EXAMPLE_SOURCE = '예시 값(예제 자료, 실제 조회 결과 아님)';
+
+function cardSource(resource) {
+  if (resource?.mode === 'demo') return { text: EXAMPLE_SOURCE, kind: 'example' };
+  if (resource?.status === 'ok') return { text: '서버 응답', kind: 'server' };
+  if (resource?.status === 'error') return UNVERIFIED_ERROR_CODES.has(resource.error?.code) ? { text: '확인 불가', kind: 'unknown' } : { text: '연결 없음', kind: 'none' };
+  return { text: '확인 불가', kind: 'unknown' };
+}
+
+function dashCard(key, title, source, value, detail) {
+  const card = makeNode('div', { className: 'card', attrs: { 'data-card': key, 'data-source': source.kind } });
+  const valueNode = makeNode('p', { text: value, attrs: { 'data-card-value': '' } });
+  valueNode.style.fontSize = '1.4rem';
+  valueNode.style.fontWeight = '700';
+  card.append(
+    makeNode('h3', { text: title }),
+    makeNode('p', { text: source.text, className: source.kind === 'example' ? 'tag tag-demo' : 'tag' }),
+    valueNode,
+    makeNode('p', { text: detail, className: 'muted' }),
+  );
+  return card;
+}
+
+// 기기·세션 카드: 목록 길이와 상태별 개수. 주의 상태(미충족·만료·철회)는 따로 센다.
+function countCard(key, title, resource, unit, goodText, goodStatus) {
+  const source = cardSource(resource);
+  if (resource?.status === 'loading') return dashCard(key, title, source, '불러오는 중', `${title} 자료를 불러오고 있습니다.`);
+  if (resource?.status === 'error') return dashCard(key, title, source, '확인 불가', '조회 실패이며 0개라는 뜻이 아닙니다. 위쪽 「다시 불러오기」 버튼을 직접 누르세요.');
+  if (resource?.status !== 'ok' || !Array.isArray(resource.data)) return dashCard(key, title, source, '확인 불가', '상태 정보를 받지 못했습니다.');
+  const list = resource.data;
+  const good = list.filter((item) => item?.status === goodStatus).length;
+  const attention = list.filter((item) => ATTENTION_STATUSES.has(item?.status)).length;
+  const unknown = list.length - good - attention;
+  return dashCard(key, title, source, `${list.length}${unit}`, list.length === 0
+    ? '빈 목록이며 조회 실패가 아닙니다.'
+    : `${goodText} ${good} · 주의 ${attention} · 확인 불가 ${unknown}`);
+}
+
+function notificationsCard(input) {
+  const notifications = input?.notifications;
+  const source = input?.mode === 'demo' ? { text: EXAMPLE_SOURCE, kind: 'example' } : { text: '이 화면이 받은 자료로 집계', kind: 'local' };
+  if (!Array.isArray(notifications)) return dashCard('notifications', '알림', source, '확인 불가', '알림 정보를 받지 못했습니다.');
+  const attention = notifications.filter((item) => notificationKind({ resource: item?.resource, code: item?.code }) === 'attention').length;
+  return dashCard('notifications', '알림', source, `${notifications.length}건`, `확인 필요 ${attention} · 조회 실패 ${notifications.length - attention}`);
+}
+
+function diagnosticsCard(resource) {
+  const source = cardSource(resource);
+  const status = resource?.status;
+  if (status === 'loading') return dashCard('diagnostics', '진단', source, '불러오는 중', '진단 정보를 불러오고 있습니다.');
+  if (status === 'idle') return dashCard('diagnostics', '진단', { text: '아직 불러오지 않음', kind: 'unknown' }, '확인 불가', '도움정보 칸의 「도움정보 불러오기」 버튼을 직접 누르면 표시됩니다.');
+  if (status === 'error') return dashCard('diagnostics', '진단', source, '확인 불가', '진단 정보를 불러오지 못했습니다. 아래 진단 칸의 안내를 확인하세요.');
+  const pairs = status === 'ok' ? diagnosticPairs(resource.data) : null;
+  if (!pairs) return dashCard('diagnostics', '진단', source, '확인 불가', '상태 정보를 받지 못했습니다.');
+  const value = (name) => pairs.find(([field]) => field === name)?.[1] ?? '값 없음';
+  return dashCard('diagnostics', '진단', source, '응답 확인', `engine.mode: ${value('engine.mode')} · engine.code: ${value('engine.code')}`);
+}
+
+function dashboardCards(input) {
+  const section = makeNode('section', { attrs: { 'data-part': 'dashboard-cards', 'aria-label': '상태 카드 네 개' } });
+  const grid = makeNode('div', { className: 'grid-2' });
+  grid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(11rem, 1fr))';
+  grid.append(
+    countCard('devices', '기기', input?.devices, '대', '충족', 'compliant'),
+    countCard('sessions', '세션', input?.sessions, '개', '활성', 'active'),
+    notificationsCard(input),
+    diagnosticsCard(input?.diagnostics),
+  );
+  section.append(
+    grid,
+    makeNode('p', { text: '표시 구분: 「예시 값」은 설명용 예제 자료이며 실제 조회 결과가 아닙니다. 「실측」은 이 PC에서 아래 버튼을 눌러 직접 잰 값입니다. 연결이 없으면 숫자를 만들지 않고 「확인 불가」로 둡니다.', className: 'muted', attrs: { 'data-legend': '' } }),
+  );
+  return section;
+}
+
+// ---- 내 PC 실측: 사용자가 버튼을 누를 때만 허용된 GET 5개를 한 번씩 부르고 걸린 시간을 잰다 ----
+// 자동 반복·자동 재시도는 없다. 결과는 createStudentView 안의 measure 객체에 보관해, 제공 화면이 칸을 다시 그려도 마지막 측정이 남는다.
+const MEASURE_PATHS = ['/api/me', '/api/apps', '/api/events', '/api/devices', '/api/sessions'];
+const kstTimeText = (iso) => new Date(iso).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+
+async function runMeasure(api, measure, onChange) {
+  if (measure.running || typeof api?.get !== 'function') return;
+  measure.running = true;
+  measure.rows = [];
+  measure.at = null;
+  onChange?.();
+  for (const path of MEASURE_PATHS) {
+    const start = performance.now();
+    let result = null;
+    try { result = await api.get(path); } catch { result = null; }
+    const ms = performance.now() - start;
+    const code = result?.ok === true ? null : (SAFE_CODE.test(result?.error?.code ?? '') ? result.error.code : 'unknown');
+    measure.rows.push({ path, ms, ok: result?.ok === true, code });
+  }
+  measure.running = false;
+  measure.at = new Date().toISOString();
+  onChange?.();
+  document.querySelector('[data-measure-button]')?.focus();
+}
+
+function measurePart(context) {
+  const { measure, canMeasure, start } = context;
+  const part = makeNode('div', { attrs: { 'data-part': 'measure', role: 'region', 'aria-label': '내 PC 실측' } });
+  part.append(
+    makeNode('h3', { text: '내 PC 실측 (응답 시간)' }),
+    makeNode('p', { text: '이 칸의 시간은 이 PC에서 직접 잰 값입니다(실측). 예제 모드에서는 예제 서버가 응답하는 시간이고, 연결이 없을 때는 오류 응답까지 걸린 시간입니다.', className: 'muted' }),
+  );
+  const button = makeNode('button', { text: measure.running ? '측정 중' : '응답 시간 측정', className: 'btn', attrs: { type: 'button', 'data-measure-button': '' } });
+  button.disabled = measure.running || !canMeasure;
+  button.addEventListener('click', start);
+  part.append(button);
+  if (!canMeasure) part.append(makeNode('p', { text: '측정 도구를 받지 못해 측정할 수 없습니다(확인 불가).', className: 'state state-empty' }));
+  if (measure.running) {
+    part.append(makeNode('p', { text: `측정 중: ${measure.rows.length}/${MEASURE_PATHS.length}개 완료`, className: 'state state-loading', attrs: { role: 'status' } }));
+  } else if (measure.rows.length === 0) {
+    part.append(makeNode('p', { text: '아직 측정하지 않았습니다. 버튼을 누르면 허용된 조회 주소 5개를 한 번씩 부릅니다. 자동으로 반복하지 않습니다.', className: 'state state-empty' }));
+  } else {
+    const list = makeNode('ul', { attrs: { 'aria-label': '실측 결과' } });
+    for (const row of measure.rows) {
+      list.append(makeNode('li', { text: `실측 · GET ${row.path} · ${row.ok ? '응답 성공' : `응답 실패(${row.code})`} · ${row.ms.toFixed(1)}ms`, attrs: { 'data-ok': String(row.ok) } }));
+    }
+    part.append(list, makeNode('p', { text: `측정 시각 ${kstTimeText(measure.at)}(한국 시각) · 1회 측정이며 누를 때마다 값이 달라집니다.`, className: 'muted' }));
+  }
+  return part;
+}
+
+function statusView(input, measureContext) {
   const root = makeNode('section', { attrs: { 'data-testid': 'student-status-view', 'aria-label': '기기·세션·알림·진단 정보 상태' } });
   const note = modeNote(input);
   if (note) root.append(note);
+  root.append(dashboardCards(input));
+  if (measureContext) root.append(measurePart(measureContext));
   root.append(
     statusPart('devices', { title: '등록 기기', objectText: '기기 목록을', retryHint: RELOAD_HINT }, input?.devices,
       (data) => statusList(data, '등록된 기기가 없음',
@@ -1013,13 +1205,15 @@ function vulnerabilitiesView(input) {
   return root;
 }
 
-export function createStudentView() {
+export function createStudentView({ api, onChange } = {}) {
   const eventFilters = { kind: 'all', app: 'all', access: 'all' };
+  const measure = { running: false, rows: [], at: null };
+  const measureContext = { measure, canMeasure: typeof api?.get === 'function', start: () => runMeasure(api, measure, onChange) };
   return {
     renderIdentity(input) { return renderIdentityView(input); },
     renderDecision(input) { return decisionView(input); },
     renderEvents(input) { return eventsView(input, eventFilters); },
-    renderStatus(input) { return statusView(input); },
+    renderStatus(input) { return statusView(input, measureContext); },
     renderVulnerabilities(input) { return vulnerabilitiesView(input); },
     renderAiConnection(input) { return aiConnectionView(input); },
     renderExplanation(input) { return explanationView(input); },
