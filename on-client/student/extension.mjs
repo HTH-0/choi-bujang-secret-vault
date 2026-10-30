@@ -97,8 +97,10 @@ function renderList(data, emptyText, describe) {
   return list;
 }
 
-function renderIdentityView({ me, devices, sessions } = {}) {
+function renderIdentityView({ me, devices, sessions } = {}, context) {
   const root = makeNode('section', { attrs: { 'data-testid': 'student-identity-view', 'aria-label': '로그인 사용자·기기·세션' } });
+  // 페이지에서 가장 위에 있는 학생 칸이므로 핵심 3가지 요약 띠를 맨 위에 둔다. 아래 13단계 표시는 그대로다.
+  if (context) root.append(summaryStrip(context, { devices, sessions }));
   root.append(
     identityPart('me', '현재 계정', me, renderMe),
     identityPart('devices', '내 기기', devices, (data) => renderList(data, '표시할 기기가 없습니다.',
@@ -183,8 +185,12 @@ function decisionView(input) {
     // unknown과 목록에 없는 값은 모두 확인 불가로 보여 주고, 받은 값이 unknown이 아니면 그 값도 적는다.
     emphasize(line(`주의 · 판정: 확인 불가(unknown) · 허용되지 않음${raw !== 'unknown' ? ` · 받은 값: ${raw}` : ''}`, 'state state-empty'));
     line(DECISION_NOTE.unknown, 'muted');
+    line('이 「확인 불가」는 판정 결과입니다. 앱이 값을 읽지 못했다는 표시(상태 카드의 「확인 불가」)와 뜻이 다릅니다.', 'muted', { 'data-unknown-meaning': '' });
   }
-  if (input?.mode === 'demo') line(`${EXAMPLE_SOURCE}: 설명용 예제 판정이며 실제 판정이 아닙니다.`, 'tag tag-demo', { 'data-example-notice': '' });
+  if (input?.mode === 'demo') {
+    line('예시 값', 'tag tag-demo', { 'data-example-notice': '' });
+    line('설명용 예제 판정이며 실제 판정이 아닙니다(예제 자료, 실제 조회 결과 아님).', 'muted');
+  }
   const list = makeNode('dl');
   for (const [label, value] of [
     ['앱', appId ?? '앱 ID 정보 없음'],
@@ -286,6 +292,24 @@ const TREND_BAR_MAX = 20;
 const kstDateFormat = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' });
 const trendBar = (count) => `${'■'.repeat(Math.min(count, TREND_BAR_MAX))}${count > TREND_BAR_MAX ? '+' : ''}`;
 
+// 추이 막대: createElementNS로 만든 SVG이며 innerHTML과 style 속성을 쓰지 않는다. 색은 제공 색 변수와 같은 값을 fill 속성으로 쓴다.
+// 막대는 장식이므로 읽는 도구에서는 숨기고(aria-hidden), 같은 줄의 글자가 건수를 알려 준다. 값이 없으면 막대 길이를 0으로 둔다.
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const BAR_FULL = 160;
+const BAR_COLOR = { accent: '#2357c6', allowed: '#1d7a3e', denied: '#b42318', unknown: '#4b5563' };
+function svgBar(count, max, color) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  for (const [name, value] of Object.entries({ width: BAR_FULL + 4, height: 12, 'aria-hidden': 'true', focusable: 'false', 'data-bar': count })) svg.setAttribute(name, String(value));
+  const rect = (width, fill) => {
+    const node = document.createElementNS(SVG_NS, 'rect');
+    for (const [name, value] of Object.entries({ x: 2, y: 2, width, height: 8, rx: 2, fill })) node.setAttribute(name, String(value));
+    return node;
+  };
+  svg.append(rect(BAR_FULL, '#eceff3'));
+  if (count > 0) svg.append(rect(Math.max(4, Math.round((count / Math.max(max, 1)) * BAR_FULL)), color));
+  return svg;
+}
+
 function trendPart(events, input) {
   const demo = input?.mode === 'demo';
   const part = makeNode('div', { attrs: { 'data-part': 'trend', role: 'region', 'aria-label': '기록 추이' } });
@@ -307,19 +331,21 @@ function trendPart(events, input) {
   part.append(makeNode('h4', { text: `날짜별 건수(한국 시각${days.length > shownDays.length ? `, 최근 ${TREND_MAX_DAYS}일` : ''})` }));
   const byDay = makeNode('ul', { attrs: { 'aria-label': '날짜별 기록 건수' } });
   if (shownDays.length === 0) byDay.append(makeNode('li', { text: '날짜를 읽을 수 있는 기록이 없습니다(확인 불가).' }));
+  const maxDay = Math.max(1, ...shownDays.map((day) => perDay.get(day)));
   for (const day of shownDays) {
     const count = perDay.get(day);
     const row = makeNode('li', { attrs: { 'data-trend-day': day } });
-    row.append(makeNode('span', { text: `${day} · ${count}건 ` }), makeNode('span', { text: trendBar(count), attrs: { 'aria-hidden': 'true' } }));
+    row.append(makeNode('span', { text: `${day} · ${count}건 ` }), svgBar(count, maxDay, BAR_COLOR.accent));
     byDay.append(row);
   }
   part.append(byDay, makeNode('h4', { text: '접속 상태 분포' }));
   const counts = { allowed: 0, denied: 0, unknown: 0 };
   for (const event of events) counts[Object.hasOwn(counts, event.state?.access) ? event.state.access : 'unknown'] += 1;
+  const maxAccess = Math.max(1, ...Object.values(counts));
   const dist = makeNode('ul', { attrs: { 'aria-label': '접속 상태 분포' } });
   for (const key of Object.keys(counts)) {
     const row = makeNode('li', { attrs: { 'data-trend-access': key } });
-    row.append(makeNode('span', { text: `${labelWithRaw(ACCESS_STATE_TEXT, key)} · ${counts[key]}건 ` }), makeNode('span', { text: trendBar(counts[key]), attrs: { 'aria-hidden': 'true' } }));
+    row.append(makeNode('span', { text: `${labelWithRaw(ACCESS_STATE_TEXT, key)} · ${counts[key]}건 ` }), svgBar(counts[key], maxAccess, BAR_COLOR[key]));
     dist.append(row);
   }
   part.append(dist);
@@ -577,7 +603,8 @@ function diagnosticsPart(resource) {
 const EXAMPLE_SOURCE = '예시 값(예제 자료, 실제 조회 결과 아님)';
 
 function cardSource(resource) {
-  if (resource?.mode === 'demo') return { text: EXAMPLE_SOURCE, kind: 'example' };
+  // 알약(출처 표시)은 짧게 두어 좁은 카드에서도 한 줄로 보이게 하고, 풀어 쓴 설명(note)은 카드의 설명 줄에 그대로 보여 준다.
+  if (resource?.mode === 'demo') return { text: '예시 값', kind: 'example', note: '예제 자료, 실제 조회 결과 아님' };
   if (resource?.status === 'ok') return { text: '서버 응답', kind: 'server' };
   if (resource?.status === 'error') return UNVERIFIED_ERROR_CODES.has(resource.error?.code) ? { text: '확인 불가', kind: 'unknown' } : { text: '연결 없음', kind: 'none' };
   return { text: '확인 불가', kind: 'unknown' };
@@ -592,7 +619,7 @@ function dashCard(key, title, source, value, detail) {
     makeNode('h3', { text: title }),
     makeNode('p', { text: source.text, className: source.kind === 'example' ? 'tag tag-demo' : 'tag' }),
     valueNode,
-    makeNode('p', { text: detail, className: 'muted' }),
+    makeNode('p', { text: `${detail}${source.note ? ` · ${source.note}` : ''}`, className: 'muted' }),
   );
   return card;
 }
@@ -614,10 +641,10 @@ function countCard(key, title, resource, unit, goodText, goodStatus) {
 
 function notificationsCard(input) {
   const notifications = input?.notifications;
-  const source = input?.mode === 'demo' ? { text: EXAMPLE_SOURCE, kind: 'example' } : { text: '이 화면이 받은 자료로 집계', kind: 'local' };
+  const source = input?.mode === 'demo' ? { text: '예시 값', kind: 'example', note: '예제 자료, 실제 조회 결과 아님' } : { text: '화면 집계', kind: 'local', note: '이 화면이 받은 자료로 집계' };
   if (!Array.isArray(notifications)) return dashCard('notifications', '알림', source, '확인 불가', '알림 정보를 받지 못했습니다.');
   const attention = notifications.filter((item) => notificationKind({ resource: item?.resource, code: item?.code }) === 'attention').length;
-  return dashCard('notifications', '알림', source, `${notifications.length}건`, `확인 필요 ${attention} · 조회 실패 ${notifications.length - attention}`);
+  return dashCard('notifications', '알림', source, `${notifications.length}건`, `확인 필요 ${attention} · 조회 실패 ${notifications.length - attention} · 목록은 아래 「기존 상태 표시 보기」에서 확인`);
 }
 
 function diagnosticsCard(resource) {
@@ -632,26 +659,115 @@ function diagnosticsCard(resource) {
   return dashCard('diagnostics', '진단', source, '응답 확인', `engine.mode: ${value('engine.mode')} · engine.code: ${value('engine.code')}`);
 }
 
+// ---- 화면 상태 기억: 접힌 설명의 펼침 상태와 초점 ----
+// 제공 화면은 칸을 다시 그릴 때마다 칸 내용을 통째로 바꾼다. 그래서 펼침 상태는 createStudentView 안의 ui.open에 기억해 두었다가 되살리고,
+// 칸 안에 있던 초점은 data-focus-key로 찾아 되돌린다. 사용자가 이미 다른 곳으로 초점을 옮겼다면 가져오지 않는다.
+function makeDisclosure(ui, key, summaryText) {
+  const details = makeNode('details', { attrs: { 'data-disclosure': key } });
+  details.open = ui.open.has(key);
+  details.append(makeNode('summary', { text: summaryText, attrs: { 'data-focus-key': `sum:${key}` } }));
+  details.addEventListener('toggle', () => { if (details.open) ui.open.add(key); else ui.open.delete(key); });
+  return details;
+}
+
+function focusKeyIn(slotId) {
+  const active = document.activeElement;
+  const slot = document.getElementById(slotId);
+  return active && slot && slot.contains(active) ? active.getAttribute('data-focus-key') : null;
+}
+
+function restoreFocusLater(slotId, key) {
+  if (!key) return;
+  queueMicrotask(() => {
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    const slot = document.getElementById(slotId);
+    [...(slot?.querySelectorAll('[data-focus-key]') ?? [])].find((el) => el.getAttribute('data-focus-key') === key)?.focus();
+  });
+}
+
+function jumpToCore(key) {
+  const target = document.querySelector(`#student-status [data-core="${key}"] [data-core-heading]`);
+  target?.scrollIntoView?.({ block: 'start' });
+  target?.focus();
+}
+
+// ---- 핵심 3가지 요약 띠: 페이지에서 가장 위에 있는 학생 칸(renderIdentity)에 둔다 ----
+// 이 칸은 기기·세션 자료만 받으므로 ①은 기기·세션·SDP만 요약하고 알림·진단은 아래 칸을 가리킨다. 값은 만들지 않고 읽지 못하면 「확인 불가」로 쓴다.
+function coreSummaries(context, input) {
+  const countText = (resource, unit) => {
+    if (resource?.status === 'loading') return '불러오는 중';
+    return resource?.status === 'ok' && Array.isArray(resource.data) ? `${resource.data.length}${unit}` : '확인 불가';
+  };
+  const sdp = sdpState({ devices: input?.devices, sessions: input?.sessions });
+  const example = [input?.devices, input?.sessions].some((resource) => resource?.mode === 'demo');
+  const out = [{ key: 'cards', label: '① 상태 카드와 SDP', text: `기기 ${countText(input?.devices, '대')} · 세션 ${countText(input?.sessions, '개')} · ${sdp.label}${example ? ' (예시 값)' : ''} · 알림과 진단은 ① 칸에서 확인` }];
+  const measure = context?.measure;
+  let measureText = '확인 불가';
+  if (measure?.running) measureText = '조회 중';
+  else if (measure && measure.history.length === 0) measureText = '아직 측정하지 않음';
+  else if (measure) {
+    const last = measure.history.at(-1);
+    const okCount = last.rows.filter((row) => row.ok).length;
+    measureText = `응답 ${okCount}/${last.rows.length}개 성공 · 메모리 ${last.pc?.heapMB != null ? `${last.pc.heapMB.toFixed(1)}MB` : '확인 불가'} · ${kstClock(last.at)} 실측`;
+  }
+  out.push({ key: 'measure', label: '② 내 PC 상태', text: measureText });
+  const pc = context?.pcInfo;
+  let pcText = '확인 불가';
+  if (pc?.loading) pcText = '조회 중';
+  else if (pc?.error) pcText = '마지막 조회 실패 · 이전 값은 현재 값이 아닙니다';
+  else if (pc && pc.history.length === 0) pcText = '점검 파일을 아직 불러오지 않음';
+  else if (pc) {
+    const cur = pc.history.at(-1);
+    const firewall = cur.firewall.status === 'ok' ? `방화벽 ${cur.firewall.profiles.filter((p) => p.enabled).length}/${cur.firewall.profiles.length}개 켜짐` : '방화벽 확인 불가';
+    const system = cur.eventLogs.status === 'ok' && cur.eventLogs.logs.System.status === 'ok' ? `System 오류 ${cur.eventLogs.logs.System.errors}건 · 경고 ${cur.eventLogs.logs.System.warnings}건` : 'System 기록 확인 불가';
+    const stale = Date.now() - cur.collectedMs > PCINFO_STALE_MIN * 60000;
+    pcText = `${firewall} · ${system} · ${kstClock(new Date(cur.collectedMs).toISOString())} 실측${stale ? ' (주의 · 오래된 값)' : ''}`;
+  }
+  out.push({ key: 'pc', label: '③ 내 PC 점검', text: pcText });
+  return out;
+}
+
+function summaryStrip(context, input) {
+  const strip = makeNode('section', { attrs: { 'data-part': 'core-summary', 'aria-label': '핵심 3가지 요약' } });
+  strip.append(makeNode('h3', { text: '핵심 3가지 요약' }));
+  // 설명 목록(dl): 버튼은 한 줄로 두고 설명은 같은 들여쓰기로 아래에 붙인다. 창 폭이 줄어도 줄 정렬이 흐트러지지 않는다.
+  const list = makeNode('dl');
+  for (const item of coreSummaries(context, input)) {
+    const row = makeNode('div', { attrs: { 'data-core-summary': item.key } });
+    const jump = makeNode('button', { text: item.label, className: 'btn', attrs: { type: 'button', 'data-core-jump-top': item.key, 'data-focus-key': `top:${item.key}` } });
+    jump.addEventListener('click', () => jumpToCore(item.key));
+    const term = makeNode('dt');
+    term.append(jump);
+    row.append(term, makeNode('dd', { text: item.text }));
+    list.append(row);
+  }
+  strip.append(list, makeNode('p', { text: '버튼을 누르면 아래 해당 칸으로 이동합니다. 「예시 값」은 설명용 예제 자료이고 「실측」은 이 PC에서 잰 값입니다.', className: 'muted' }));
+  return strip;
+}
+
 // 핵심 기능 섹션 제목: 바로가기 버튼이 초점을 옮길 수 있게 tabindex=-1을 둔다(Tab 순서에는 넣지 않는다).
 function coreHeading(text) {
   return makeNode('h3', { text, attrs: { tabindex: '-1', 'data-core-heading': '' } });
 }
 
-function dashboardCards(input) {
+function dashboardCards(input, ui) {
   const section = makeNode('section', { attrs: { 'data-part': 'dashboard-cards', 'data-core': 'cards', 'aria-label': '상태 카드 네 개' } });
   section.append(coreHeading('① 상태 카드와 SDP 연결 상태'));
   const grid = makeNode('div', { className: 'grid-2' });
-  grid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(11rem, 1fr))';
+  grid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(9.5rem, 1fr))'; // 이 앱의 최소 폭(1024px)에서도 카드 4개가 한 줄이 되는 값
   grid.append(
     countCard('devices', '기기', input?.devices, '대', '충족', 'compliant'),
     countCard('sessions', '세션', input?.sessions, '개', '활성', 'active'),
     notificationsCard(input),
     diagnosticsCard(input?.diagnostics),
   );
-  section.append(
-    grid,
+  const legend = makeDisclosure(ui, 'legend', '표시 구분과 「확인 불가」의 뜻 보기');
+  legend.append(
     makeNode('p', { text: '표시 구분: 「예시 값」은 설명용 예제 자료이며 실제 조회 결과가 아닙니다. 「실측」은 이 PC에서 아래 버튼을 눌러 직접 잰 값입니다. 연결이 없으면 숫자를 만들지 않고 「확인 불가」로 둡니다. 이 카드의 값을 다시 조회하려면 화면 위쪽 제공 「다시 불러오기」 버튼을 직접 누르세요(이 앱이 따로 조회하지 않습니다).', className: 'muted', attrs: { 'data-legend': '' } }),
+    makeNode('p', { text: '「확인 불가」는 이 앱이 값을 읽지 못했다는 표시입니다. 업무 앱 화면의 판정 「확인 불가」는 판정 결과여서 뜻이 다릅니다. 칸 위쪽의 「예제 자료」와 카드의 「예시 값」은 같은 뜻입니다.', className: 'muted', attrs: { 'data-legend-unknown': '' } }),
   );
+  section.append(grid, legend);
   return section;
 }
 
@@ -722,23 +838,41 @@ const API_NEXT = {
 };
 const apiNext = (code) => API_NEXT[code] ?? `원인을 알 수 없습니다(코드: ${code}). 「다시 조회」를 직접 누르고, 반복되면 진단 칸의 도움정보를 담당자에게 전달하세요.`;
 
+// 한 줄로 보이는 짧은 이유. 자세한 이유와 다음에 할 일은 접힌 설명(PC_REASON, PC_NEXT)에 있다.
+const PC_SHORT = {
+  cpu: '브라우저가 CPU 사용률을 알려 주지 않음',
+  disk: '브라우저가 디스크 남은 공간을 알려 주지 않음',
+  heap: '이 브라우저는 자바스크립트 메모리 값을 알려 주지 않음(Chrome·Edge만)',
+  device: '이 브라우저는 기기 메모리 값을 알려 주지 않음',
+};
+
 // 네 줄: CPU 사용률, 메모리(이 탭), 기기 메모리 총량(참고), 디스크 남은 공간. 값마다 단위와 잰 시각을 붙인다.
-function pcStateList(pc) {
+function pcStateList(pc, ui) {
   const rows = [
     { key: 'cpu', name: 'CPU 사용률', value: null, unit: '%', always: true },
     { key: 'heap', name: '메모리 사용량(이 탭의 자바스크립트, PC 전체 아님)', value: pc?.heapMB ?? null, unit: 'MB', digits: 1 },
     { key: 'device', name: '기기 메모리 총량(브라우저가 알려 준 근사값, 참고)', value: pc?.deviceGB ?? null, unit: 'GB', digits: 0 },
     { key: 'disk', name: '디스크 남은 공간', value: null, unit: 'GB', always: true },
   ];
+  const wrap = makeNode('div', { attrs: { 'data-pc-state': '' } });
   const list = makeNode('ul', { attrs: { 'aria-label': '내 PC 상태' } });
+  const unreadable = [];
   for (const row of rows) {
     let text;
     if (row.value !== null) text = `${row.name}: ${row.value.toFixed(row.digits)} ${row.unit} · 잰 시각 ${kstTimeText(pc.at)}(한국 시각) · 실측(브라우저가 알려 준 값)`;
-    else if (row.always || pc) text = `${row.name}: 확인 불가 · 이유: ${PC_REASON[row.key]} · ${PC_NEXT[row.key]}`;
+    else if (row.always || pc) { text = `${row.name}: 확인 불가 · 이유: ${PC_SHORT[row.key]}`; unreadable.push(row); }
     else text = `${row.name}: 아직 측정하지 않음`;
     list.append(makeNode('li', { text, attrs: { 'data-pc': row.key, 'data-available': String(row.value !== null) } }));
   }
-  return list;
+  wrap.append(list);
+  if (unreadable.length > 0) {
+    const more = makeDisclosure(ui, 'pc-reasons', '읽지 못한 항목의 자세한 이유와 다음에 할 일 보기');
+    const detail = makeNode('ul');
+    for (const row of unreadable) detail.append(makeNode('li', { text: `${row.name}: ${PC_REASON[row.key]} ${PC_NEXT[row.key]}`, className: 'muted' }));
+    more.append(detail);
+    wrap.append(more);
+  }
+  return wrap;
 }
 
 // 직전 측정과 지금 측정을 비교한다. 응답 실패나 읽지 못한 값은 비교하지 않고 그 사실을 적는다.
@@ -772,15 +906,14 @@ function comparisonTable(history) {
 }
 
 function measurePart(context) {
-  const { measure, canMeasure, start } = context;
+  const { measure, canMeasure, start, ui } = context;
   const part = makeNode('div', { attrs: { 'data-part': 'measure', 'data-core': 'measure', role: 'region', 'aria-label': '내 PC 상태', 'aria-busy': String(measure.running) } });
   part.append(
     coreHeading('② 내 PC 상태 (실측, 학생 구현)'),
-    makeNode('p', { text: '제공 기능에는 CPU·메모리·디스크 표시가 없어 학생 코드가 직접 읽습니다. 관리자 권한 없이 브라우저가 알려 주는 값만 쓰며, 이 PC에서 버튼을 눌러 잰 실측입니다. 응답 시간은 예제 모드에서는 예제 서버, 연결이 없을 때는 오류 응답까지 걸린 시간입니다. 이 칸에는 예시 값을 쓰지 않습니다.', className: 'muted' }),
-    pcStateList(measure.running ? null : measure.pc),
+    makeNode('p', { text: '버튼을 누를 때만 이 PC에서 직접 재는 실측입니다. 이 칸에는 예시 값을 쓰지 않습니다.', className: 'muted' }),
   );
   // 첫 조회 뒤에는 「다시 조회」. 조회 중에는 버튼을 잠그고 대기 표시를 보여 준다. 자동으로 다시 조회하지 않는다.
-  const button = makeNode('button', { text: measure.running ? '조회 중' : (measure.history.length > 0 ? '다시 조회' : '내 PC 상태 측정'), className: 'btn', attrs: { type: 'button', 'data-measure-button': '' } });
+  const button = makeNode('button', { text: measure.running ? '조회 중' : (measure.history.length > 0 ? '다시 조회' : '내 PC 상태 측정'), className: 'btn', attrs: { type: 'button', 'data-measure-button': '', 'data-focus-key': 'measure-button' } });
   button.disabled = measure.running || !canMeasure;
   button.addEventListener('click', start);
   part.append(button);
@@ -795,26 +928,32 @@ function measurePart(context) {
       list.append(makeNode('li', { text: `실측 · GET ${row.path} · ${row.ok ? '응답 성공' : `응답 실패(${row.code})`} · ${row.ms.toFixed(1)}ms`, attrs: { 'data-ok': String(row.ok) } }));
     }
     part.append(list, makeNode('p', { text: `측정 시각 ${kstTimeText(measure.at)}(한국 시각) · 1회 측정이며 누를 때마다 값이 달라집니다.`, className: 'muted' }));
-    // 실패한 항목은 따로 모아 코드와 다음에 할 일을 보여 준다. 실패를 예시 값이나 이전 값으로 채우지 않는다.
+    // 실패한 항목은 따로 모으고, 같은 실패 코드의 「다음에 할 일」은 한 번만 적는다. 실패를 예시 값이나 이전 값으로 채우지 않는다.
     const failed = measure.rows.filter((row) => !row.ok);
     if (failed.length > 0) {
       const box = makeNode('div', { attrs: { 'data-measure-failures': '', role: 'group', 'aria-label': '실패한 항목' } });
       box.append(makeNode('h4', { text: `실패한 항목 ${failed.length}개 / ${measure.rows.length}개 (조회 성공이 아니며 예시 값으로 대신하지 않습니다)` }));
       const items = makeNode('ul');
-      for (const row of failed) items.append(makeNode('li', { text: `GET ${row.path} · 실패 코드 ${row.code} · 다음에 할 일: ${apiNext(row.code)}`, className: 'state state-error', attrs: { 'data-fail-code': row.code } }));
+      for (const row of failed) items.append(makeNode('li', { text: `GET ${row.path} · 실패 코드 ${row.code}`, className: 'state state-error', attrs: { 'data-fail-code': row.code } }));
       box.append(items);
+      for (const code of [...new Set(failed.map((row) => row.code))]) {
+        box.append(makeNode('p', { text: `다음에 할 일(${code}): ${apiNext(code)}`, attrs: { 'data-fail-next': code } }));
+      }
       part.append(box);
     }
+  }
+  part.append(pcStateList(measure.running ? null : measure.pc, ui));
+  if (!measure.running && measure.rows.length > 0) {
     part.append(makeNode('h4', { text: `추이 비교 (측정 ${measure.history.length}회, 최대 ${HISTORY_MAX}회 보관)` }));
     if (measure.history.length < 2) {
       part.append(makeNode('p', { text: '비교하려면 한 번 더 측정하세요. 직전 측정이 없어 아직 비교하지 않습니다.', className: 'state state-empty', attrs: { role: 'status' } }));
     } else {
-      part.append(
-        comparisonTable(measure.history),
-        makeNode('p', { text: '응답 시간은 누를 때마다 조금씩 달라지는 값이며 차이가 곧 문제를 뜻하지 않습니다. 메모리는 이 탭의 값이고 PC 전체 사용량이 아닙니다. 비교 기록은 이 화면의 메모리에만 있고 화면을 새로 열면 사라집니다.', className: 'muted' }),
-      );
+      part.append(comparisonTable(measure.history), makeNode('p', { text: '응답 시간은 누를 때마다 달라지는 값이며 차이가 곧 문제를 뜻하지 않습니다.', className: 'muted' }));
     }
   }
+  const info = makeDisclosure(ui, 'measure-info', '이 칸이 재는 것과 한계 보기');
+  info.append(makeNode('p', { text: '제공 기능에는 CPU·메모리·디스크 표시가 없어 학생 코드가 직접 읽습니다. 관리자 권한 없이 브라우저가 알려 주는 값만 쓰며, 응답 시간은 예제 모드에서는 예제 서버, 연결이 없을 때는 오류 응답까지 걸린 시간입니다. 메모리는 이 탭의 값이고 PC 전체 사용량이 아닙니다. 비교 기록은 이 화면의 메모리에만 있고 화면을 새로 열면 사라집니다.', className: 'muted' }));
+  part.append(info);
   return part;
 }
 
@@ -952,13 +1091,18 @@ function pcAge(ms) {
   return minutes > PCINFO_STALE_MIN ? `주의 · 오래된 값, ${minutes}분 전` : `${minutes}분 전`;
 }
 
-function pcBlock(key, title, unit, section, lines, collectedMs) {
+function pcBlock(key, title, unit, section, lines, collectedMs, onNext) {
   const block = makeNode('div', { attrs: { 'data-pc-block': key, 'data-status': section.status } });
   block.append(makeNode('h4', { text: title }), makeNode('p', { text: `불러온 파일 값(실측) · 잰 시각 ${kstTimeText(new Date(collectedMs).toISOString())}(한국 시각, ${pcAge(collectedMs)}) · 단위 ${unit}`, className: 'muted' }));
   const list = makeNode('ul');
   if (section.status === 'ok') for (const line of lines(section)) list.append(makeNode('li', { text: line }));
-  else if (section.status === 'unavailable') list.append(makeNode('li', { text: `확인 불가 · 이유: ${PCINFO_REASON[section.reason]} · ${PCINFO_NEXT[section.reason]}`, className: 'state state-empty' }));
-  else list.append(makeNode('li', { text: `확인 불가 · 이유: 파일에서 이 항목의 형식이 맞지 않아 숫자를 만들지 않았습니다. · ${PCINFO_NEXT.invalid}`, className: 'state state-empty' }));
+  else if (section.status === 'unavailable') {
+    onNext?.(section.reason);
+    list.append(makeNode('li', { text: `확인 불가 · 이유: ${PCINFO_REASON[section.reason]}`, className: 'state state-empty' }));
+  } else {
+    onNext?.('invalid');
+    list.append(makeNode('li', { text: '확인 불가 · 이유: 파일에서 이 항목의 형식이 맞지 않아 숫자를 만들지 않았습니다.', className: 'state state-empty' }));
+  }
   block.append(list);
   return block;
 }
@@ -994,22 +1138,31 @@ function pcCompare(prev, cur) {
 }
 
 function pcCheckPart(context) {
-  const { pcInfo, onPcFile } = context;
+  const { pcInfo, onPcFile, ui } = context;
+  const cur = pcInfo.history.at(-1);
   const part = makeNode('div', { attrs: { 'data-part': 'pc-check', 'data-core': 'pc', role: 'region', 'aria-label': '내 PC 점검', 'aria-busy': String(pcInfo.loading === true) } });
   part.append(
     coreHeading('③ 내 PC 점검 (읽기 전용, 학생 구현)'),
-    makeNode('p', { text: '이 칸의 건수는 침해나 공격 탐지 결과가 아닙니다. Windows가 남긴 경고·오류 기록의 개수일 뿐입니다. 방화벽과 보안 설정은 읽기만 하며 바꾸지 않습니다. 관리자 권한이 필요한 항목은 바꾸려 하지 않고 「확인 불가」와 이유로 표시합니다. 이 칸에는 예시 값을 쓰지 않습니다.', className: 'muted', attrs: { 'data-pc-notice': '' } }),
-    makeNode('p', { text: '값은 브라우저가 직접 읽은 것이 아니라 읽기 전용 수집 스크립트가 일반 권한으로 읽어 파일에 남긴 값을 사용자가 불러온 것입니다. 실제 주소, MAC, 무선 이름, 컴퓨터 이름은 수집하지 않습니다.', className: 'muted' }),
+    makeNode('p', { text: '이 칸의 건수는 침해나 공격 탐지 결과가 아닙니다. Windows가 남긴 경고·오류 기록의 개수일 뿐입니다. 방화벽과 보안 설정은 읽기만 하며 바꾸지 않습니다. 이 칸에는 예시 값을 쓰지 않습니다.', className: 'muted', attrs: { 'data-pc-notice': '' } }),
+  );
+  // 수집 방법: 아직 불러온 값이 없을 때는 바로 보이고, 값을 불러온 뒤에는 접어 둔다.
+  const howto = [
+    makeNode('p', { text: '값은 브라우저가 직접 읽은 것이 아니라 읽기 전용 수집 스크립트가 일반 권한으로 읽어 파일에 남긴 값을 사용자가 불러온 것입니다. 관리자 권한이 필요한 항목은 바꾸려 하지 않고 「확인 불가」와 이유로 표시하며, 실제 주소, MAC, 무선 이름, 컴퓨터 이름은 수집하지 않습니다.', className: 'muted' }),
     makeNode('p', { text: '1) on-client 폴더에서 실행: powershell -NoProfile -ExecutionPolicy Bypass -File .\\student\\collect-pc-info.ps1', className: 'muted' }),
     makeNode('p', { text: '2) 아래 「PC 점검 파일 불러오기」(두 번째부터는 「다시 조회」) 버튼을 누르고 %TEMP%\\hth-pc-info.json 을 고릅니다(파일 선택 창 주소칸에 붙여 넣으세요). 폴더가 먼저 나열되어 파일이 안 보이면 아래로 내리거나 「파일 이름」 칸에 hth-pc-info.json 을 입력하세요. 파일을 고를 때만 불러오며 자동으로 읽지 않습니다.', className: 'muted' }),
-  );
+  ];
+  if (cur) {
+    const how = makeDisclosure(ui, 'pc-howto', '수집 방법과 안내 보기');
+    how.append(...howto);
+    part.append(how);
+  } else part.append(...howto);
   // 파일 입력은 화면에 보이지 않게 두고, 키보드로 누를 수 있는 버튼 하나로 연다. 브라우저는 OS를 직접 읽을 수 없으므로
   // 「다시 조회」는 수집 스크립트를 다시 실행한 뒤 새 파일을 다시 고르는 동작이다.
   const fileId = `student-pc-file-${++pcFileSeq}`;
   const input = makeNode('input', { attrs: { type: 'file', id: fileId, accept: '.json,application/json', 'aria-label': 'PC 점검 파일', 'data-pc-file': '' } });
   input.hidden = true;
   input.addEventListener('change', () => onPcFile(input.files?.[0]));
-  const retry = makeNode('button', { text: pcInfo.loading ? '조회 중' : (pcInfo.history.length > 0 ? '다시 조회(파일 다시 고르기)' : 'PC 점검 파일 불러오기'), className: 'btn', attrs: { type: 'button', 'data-pc-retry': '', 'aria-controls': fileId } });
+  const retry = makeNode('button', { text: pcInfo.loading ? '조회 중' : (pcInfo.history.length > 0 ? '다시 조회(파일 다시 고르기)' : 'PC 점검 파일 불러오기'), className: 'btn', attrs: { type: 'button', 'data-pc-retry': '', 'data-focus-key': 'pc-retry', 'aria-controls': fileId } });
   retry.disabled = pcInfo.loading === true;
   retry.addEventListener('click', () => input.click());
   part.append(retry, input);
@@ -1020,20 +1173,22 @@ function pcCheckPart(context) {
       makeNode('p', { text: PCINFO_RETRY_NEXT, className: 'muted', attrs: { 'data-pc-next': '' } }),
     );
   }
-  const cur = pcInfo.history.at(-1);
   if (!cur) {
     part.append(makeNode('p', { text: 'PC 점검 파일을 아직 불러오지 않았습니다(확인 불가). 값을 만들어 보여 주지 않습니다. 다음에 할 일: 위 1)의 명령을 실행한 뒤 「PC 점검 파일 불러오기」를 누르세요.', className: 'state state-empty', attrs: { role: 'status' } }));
     return part;
   }
-  part.append(
+  const nexts = new Set();
+  const onNext = (reason) => nexts.add(reason);
+  const values = makeNode('div', { attrs: { 'data-pc-values': '', 'data-current': String(!pcInfo.error) } });
+  values.append(
     pcBlock('network', '네트워크 구성(주소 제외)', '개', cur.network, (n) => [
       `어댑터 ${n.adapters.total}개 중 연결됨 ${n.adapters.up}개 (유선 ${n.adapters.wired}개, 무선 ${n.adapters.wireless}개, 기타 ${n.adapters.other}개)`,
       `연결된 어댑터 중 IPv4 설정 ${n.ipv4}개 · 기본 게이트웨이 설정 ${n.gateway}개 · DNS 설정 ${n.dns}개`,
-    ], cur.collectedMs),
+    ], cur.collectedMs, onNext),
     pcBlock('firewall', '방화벽 설정(읽기만 함)', '켜짐·꺼짐', cur.firewall, (f) => [
       ...f.profiles.map((p) => `${FIREWALL_NAME_TEXT[p.name]} 프로필(${p.name}): ${p.enabled ? '켜짐' : '주의 · 꺼짐'} · 기본 인바운드 동작 ${p.defaultInbound}`),
       'NotConfigured는 따로 지정하지 않고 Windows 기본 동작을 따른다는 표시입니다.',
-    ], cur.collectedMs),
+    ], cur.collectedMs, onNext),
   );
   const logs = makeNode('div', { attrs: { 'data-pc-block': 'events', 'data-status': cur.eventLogs.status } });
   logs.append(makeNode('h4', { text: `Windows 기록의 경고·오류 건수(최근 ${cur.windowHours}시간)` }), makeNode('p', { text: `불러온 파일 값(실측) · 잰 시각 ${kstTimeText(new Date(cur.collectedMs).toISOString())}(한국 시각, ${pcAge(cur.collectedMs)}) · 단위 건 · 침해나 공격 탐지 결과가 아닙니다`, className: 'muted' }));
@@ -1042,17 +1197,31 @@ function pcCheckPart(context) {
     const entry = cur.eventLogs.status === 'ok' ? cur.eventLogs.logs[name] : { status: 'invalid' };
     let text;
     if (entry.status === 'ok') text = `${name}: 오류 ${entry.errors}건 · 경고 ${entry.warnings}건${entry.truncated ? ' (세는 상한 10000건에서 멈춤)' : ''}`;
-    else if (entry.status === 'unavailable') text = `${name}: 확인 불가 · 이유: ${PCINFO_REASON[entry.reason]} · ${PCINFO_NEXT[entry.reason]}`;
-    else text = `${name}: 확인 불가 · 이유: 파일에서 이 항목의 형식이 맞지 않아 숫자를 만들지 않았습니다. · ${PCINFO_NEXT.invalid}`;
+    else if (entry.status === 'unavailable') { onNext(entry.reason); text = `${name}: 확인 불가 · 이유: ${PCINFO_REASON[entry.reason]}`; }
+    else { onNext('invalid'); text = `${name}: 확인 불가 · 이유: 파일에서 이 항목의 형식이 맞지 않아 숫자를 만들지 않았습니다.`; }
     logList.append(makeNode('li', { text, attrs: { 'data-pc-log': name, 'data-status': entry.status } }));
   }
-  logList.append(makeNode('li', { text: `Security: 확인 불가 · 이유: 관리자 권한이 필요해 읽지 않습니다(바꾸려 하지 않음). · ${PCINFO_NEXT.access_denied}`, attrs: { 'data-pc-log': 'Security', 'data-status': 'unavailable' } }));
+  onNext('access_denied');
+  logList.append(makeNode('li', { text: 'Security: 확인 불가 · 이유: 관리자 권한이 필요해 읽지 않습니다(바꾸려 하지 않음).', attrs: { 'data-pc-log': 'Security', 'data-status': 'unavailable' } }));
   logs.append(logList);
-  part.append(logs, makeNode('h4', { text: `PC 점검 비교 (불러온 파일 ${pcInfo.history.length}개, 최대 ${PCINFO_HISTORY_MAX}개 보관)` }));
+  values.append(logs, makeNode('h4', { text: `PC 점검 비교 (불러온 파일 ${pcInfo.history.length}개, 최대 ${PCINFO_HISTORY_MAX}개 보관)` }));
   if (pcInfo.history.length < 2) {
-    part.append(makeNode('p', { text: '비교하려면 수집 스크립트를 다시 실행해 한 번 더 불러오세요. 직전 점검이 없어 아직 비교하지 않습니다.', className: 'state state-empty', attrs: { role: 'status' } }));
+    values.append(makeNode('p', { text: '비교하려면 수집 스크립트를 다시 실행해 한 번 더 불러오세요. 직전 점검이 없어 아직 비교하지 않습니다.', className: 'state state-empty', attrs: { role: 'status' } }));
   } else {
-    part.append(pcCompare(pcInfo.history.at(-2), cur), makeNode('p', { text: '비교 기록은 이 화면의 메모리에만 있고 화면을 새로 열면 사라집니다. 건수의 차이는 침해나 공격 여부를 뜻하지 않습니다.', className: 'muted' }));
+    values.append(pcCompare(pcInfo.history.at(-2), cur), makeNode('p', { text: '비교 기록은 이 화면의 메모리에만 있고 화면을 새로 열면 사라집니다. 건수의 차이는 침해나 공격 여부를 뜻하지 않습니다.', className: 'muted' }));
+  }
+  // 이번 조회가 실패했다면 이전에 불러온 값은 현재 값처럼 보이지 않게 접힌 상자에 따로 둔다.
+  if (pcInfo.error) {
+    const last = makeDisclosure(ui, 'pc-lastgood', '마지막으로 성공한 점검 값 보기(이번 조회는 실패했으므로 현재 값이 아닙니다)');
+    last.append(values);
+    part.append(last);
+  } else part.append(values);
+  if (nexts.size > 0) {
+    const more = makeDisclosure(ui, 'pc-next', '확인 불가 항목의 다음에 할 일 보기');
+    const list = makeNode('ul');
+    for (const reason of nexts) list.append(makeNode('li', { text: PCINFO_NEXT[reason], className: 'muted' }));
+    more.append(list);
+    part.append(more);
   }
   return part;
 }
@@ -1060,16 +1229,12 @@ function pcCheckPart(context) {
 // 핵심 3가지 바로가기: 버튼을 누르면 해당 섹션 제목으로 초점과 화면을 옮긴다(Tab, Enter, Space로 조작).
 const CORE_SECTIONS = [['cards', '① 상태 카드와 SDP'], ['measure', '② 내 PC 상태'], ['pc', '③ 내 PC 점검']];
 
-function coreNav(root, withPc) {
+function coreNav(withPc) {
   const nav = makeNode('nav', { attrs: { 'aria-label': '핵심 3가지 바로가기', 'data-core-nav': '' } });
   nav.append(makeNode('span', { text: '핵심 3가지 바로가기: ' }));
   for (const [key, label] of CORE_SECTIONS.filter(([key]) => withPc || key === 'cards')) {
-    const button = makeNode('button', { text: label, className: 'btn', attrs: { type: 'button', 'data-core-jump': key } });
-    button.addEventListener('click', () => {
-      const target = root.querySelector(`[data-core="${key}"] [data-core-heading]`);
-      target?.scrollIntoView?.({ block: 'start' });
-      target?.focus();
-    });
+    const button = makeNode('button', { text: label, className: 'btn', attrs: { type: 'button', 'data-core-jump': key, 'data-focus-key': `jump:${key}` } });
+    button.addEventListener('click', () => jumpToCore(key));
     nav.append(button);
   }
   return nav;
@@ -1077,12 +1242,15 @@ function coreNav(root, withPc) {
 
 function statusView(input, measureContext) {
   const root = makeNode('section', { attrs: { 'data-testid': 'student-status-view', 'aria-label': '기기·세션·알림·진단 정보 상태' } });
+  const ui = measureContext?.ui ?? { open: new Set() };
   const note = modeNote(input);
   if (note) root.append(note);
-  root.append(coreNav(root, Boolean(measureContext)), dashboardCards(input), sdpPart(input));
+  root.append(coreNav(Boolean(measureContext)), dashboardCards(input, ui), sdpPart(input));
   if (measureContext) root.append(measurePart(measureContext));
   if (measureContext?.pcInfo) root.append(pcCheckPart(measureContext));
-  root.append(
+  // 16단계에서 만든 기기·세션·알림·진단 표시는 지우지 않고 접어서 남긴다(핵심 3가지가 먼저 보이도록).
+  const legacy = makeDisclosure(ui, 'legacy', '기존 상태 표시 보기(등록 기기 · 현재 세션 · 알림 · 진단 정보)');
+  legacy.append(
     statusPart('devices', { title: '등록 기기', objectText: '기기 목록을', retryHint: RELOAD_HINT }, input?.devices,
       (data) => statusList(data, '등록된 기기가 없음',
         (d) => `${nameAndId(d)} · 상태: ${statusText(DEVICE_STATUS_TEXT, d?.status)}`)),
@@ -1091,7 +1259,8 @@ function statusView(input, measureContext) {
     (data) => statusList(data, '현재 연결 없음',
       (s) => `${textOf(s?.id) ?? '세션 ID 없음'} · 상태: ${statusText(SESSION_STATUS_TEXT, s?.status)}`));
   sessions.append(makeNode('p', { text: '세션은 지금 검증된 연결 하나만 표시합니다. 지난 세션 목록이 아닙니다.', className: 'muted' }));
-  root.append(sessions, notificationsPart(input?.notifications), diagnosticsPart(input?.diagnostics));
+  legacy.append(sessions, notificationsPart(input?.notifications), diagnosticsPart(input?.diagnostics));
+  root.append(legacy);
   return root;
 }
 
@@ -1585,12 +1754,15 @@ export function createStudentView({ api, onChange } = {}) {
   const eventFilters = { kind: 'all', app: 'all', access: 'all' };
   const measure = { running: false, rows: [], at: null, pc: null, history: [] };
   const pcInfo = { history: [], error: null, loading: false };
-  const measureContext = { measure, canMeasure: typeof api?.get === 'function', start: () => runMeasure(api, measure, onChange), pcInfo, onPcFile: (file) => loadPcFile(file, pcInfo, onChange) };
+  const ui = { open: new Set() }; // 접힌 설명의 펼침 상태. 제공 화면이 칸을 다시 그려도 여기서 되살린다.
+  const measureContext = { measure, canMeasure: typeof api?.get === 'function', start: () => runMeasure(api, measure, onChange), pcInfo, onPcFile: (file) => loadPcFile(file, pcInfo, onChange), ui };
+  // 칸을 다시 그리기 전에 칸 안의 초점 위치를 적어 두고, 그린 뒤 사용자가 다른 곳으로 옮기지 않았다면 되돌린다.
+  const withFocus = (slotId, build) => { const key = focusKeyIn(slotId); const out = build(); restoreFocusLater(slotId, key); return out; };
   return {
-    renderIdentity(input) { return renderIdentityView(input); },
+    renderIdentity(input) { return withFocus('student-identity', () => renderIdentityView(input, measureContext)); },
     renderDecision(input) { return decisionView(input); },
     renderEvents(input) { return eventsView(input, eventFilters); },
-    renderStatus(input) { return statusView(input, measureContext); },
+    renderStatus(input) { return withFocus('student-status', () => statusView(input, measureContext)); },
     renderVulnerabilities(input) { return vulnerabilitiesView(input); },
     renderAiConnection(input) { return aiConnectionView(input); },
     renderExplanation(input) { return explanationView(input); },
