@@ -632,8 +632,14 @@ function diagnosticsCard(resource) {
   return dashCard('diagnostics', '진단', source, '응답 확인', `engine.mode: ${value('engine.mode')} · engine.code: ${value('engine.code')}`);
 }
 
+// 핵심 기능 섹션 제목: 바로가기 버튼이 초점을 옮길 수 있게 tabindex=-1을 둔다(Tab 순서에는 넣지 않는다).
+function coreHeading(text) {
+  return makeNode('h3', { text, attrs: { tabindex: '-1', 'data-core-heading': '' } });
+}
+
 function dashboardCards(input) {
-  const section = makeNode('section', { attrs: { 'data-part': 'dashboard-cards', 'aria-label': '상태 카드 네 개' } });
+  const section = makeNode('section', { attrs: { 'data-part': 'dashboard-cards', 'data-core': 'cards', 'aria-label': '상태 카드 네 개' } });
+  section.append(coreHeading('① 상태 카드와 SDP 연결 상태'));
   const grid = makeNode('div', { className: 'grid-2' });
   grid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(11rem, 1fr))';
   grid.append(
@@ -644,7 +650,7 @@ function dashboardCards(input) {
   );
   section.append(
     grid,
-    makeNode('p', { text: '표시 구분: 「예시 값」은 설명용 예제 자료이며 실제 조회 결과가 아닙니다. 「실측」은 이 PC에서 아래 버튼을 눌러 직접 잰 값입니다. 연결이 없으면 숫자를 만들지 않고 「확인 불가」로 둡니다.', className: 'muted', attrs: { 'data-legend': '' } }),
+    makeNode('p', { text: '표시 구분: 「예시 값」은 설명용 예제 자료이며 실제 조회 결과가 아닙니다. 「실측」은 이 PC에서 아래 버튼을 눌러 직접 잰 값입니다. 연결이 없으면 숫자를 만들지 않고 「확인 불가」로 둡니다. 이 카드의 값을 다시 조회하려면 화면 위쪽 제공 「다시 불러오기」 버튼을 직접 누르세요(이 앱이 따로 조회하지 않습니다).', className: 'muted', attrs: { 'data-legend': '' } }),
   );
   return section;
 }
@@ -698,6 +704,24 @@ async function runMeasure(api, measure, onChange) {
 
 const kstClock = (iso) => new Date(iso).toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul' });
 
+// 읽지 못한 값 옆에 붙이는 「다음에 할 일」. 예시 값으로 대신하지 않고 사용자가 직접 할 수 있는 일만 적는다.
+const PC_NEXT = {
+  cpu: '다음에 할 일: Windows 작업 관리자에서 직접 확인하세요. 이 앱은 읽지 않습니다.',
+  disk: '다음에 할 일: 파일 탐색기의 드라이브 속성에서 직접 확인하세요. 이 앱은 읽지 않습니다.',
+  heap: '다음에 할 일: Chrome 또는 Edge에서 이 화면을 열고 「다시 조회」를 누르세요.',
+  device: '다음에 할 일: Chrome 또는 Edge에서 이 화면을 열고 「다시 조회」를 누르세요.',
+};
+const API_NEXT = {
+  ENGINE_NOT_CONNECTED: 'SDP 연결 설정이 없어 서버가 「연결 없음」으로 응답했습니다. 예제 화면은 npm run demo로 켜고, 실제 연결은 담당자 안내를 받은 뒤에만 설정하세요.',
+  TIMEOUT: '서버 응답이 늦었습니다. 서버 창이 켜져 있는지 확인한 뒤 「다시 조회」를 직접 누르세요.',
+  NETWORK_ERROR: '로컬 서버에 연결할 수 없습니다. npm start 또는 npm run demo 창이 켜져 있는지 확인한 뒤 「다시 조회」를 누르세요.',
+  NOT_ALLOWED: '이 앱 판에서는 조회가 허용되지 않은 주소입니다(지원 없음). 다른 주소로 우회하지 않습니다.',
+  CANCELLED: '조회가 취소되었습니다. 필요하면 「다시 조회」를 직접 누르세요.',
+  CONTRACT_MISMATCH: '응답을 확인할 수 없습니다. 연결된 것으로 보지 않습니다. 「다시 조회」를 한 번 누르고 같으면 진단 칸의 도움정보를 담당자에게 전달하세요.',
+  ENGINE_RESULT_UNVERIFIED: '응답을 확인할 수 없습니다. 연결된 것으로 보지 않습니다. 「다시 조회」를 한 번 누르고 같으면 진단 칸의 도움정보를 담당자에게 전달하세요.',
+};
+const apiNext = (code) => API_NEXT[code] ?? `원인을 알 수 없습니다(코드: ${code}). 「다시 조회」를 직접 누르고, 반복되면 진단 칸의 도움정보를 담당자에게 전달하세요.`;
+
 // 네 줄: CPU 사용률, 메모리(이 탭), 기기 메모리 총량(참고), 디스크 남은 공간. 값마다 단위와 잰 시각을 붙인다.
 function pcStateList(pc) {
   const rows = [
@@ -710,7 +734,7 @@ function pcStateList(pc) {
   for (const row of rows) {
     let text;
     if (row.value !== null) text = `${row.name}: ${row.value.toFixed(row.digits)} ${row.unit} · 잰 시각 ${kstTimeText(pc.at)}(한국 시각) · 실측(브라우저가 알려 준 값)`;
-    else if (row.always || pc) text = `${row.name}: 확인 불가 · 이유: ${PC_REASON[row.key]}`;
+    else if (row.always || pc) text = `${row.name}: 확인 불가 · 이유: ${PC_REASON[row.key]} · ${PC_NEXT[row.key]}`;
     else text = `${row.name}: 아직 측정하지 않음`;
     list.append(makeNode('li', { text, attrs: { 'data-pc': row.key, 'data-available': String(row.value !== null) } }));
   }
@@ -749,19 +773,20 @@ function comparisonTable(history) {
 
 function measurePart(context) {
   const { measure, canMeasure, start } = context;
-  const part = makeNode('div', { attrs: { 'data-part': 'measure', role: 'region', 'aria-label': '내 PC 상태' } });
+  const part = makeNode('div', { attrs: { 'data-part': 'measure', 'data-core': 'measure', role: 'region', 'aria-label': '내 PC 상태', 'aria-busy': String(measure.running) } });
   part.append(
-    makeNode('h3', { text: '내 PC 상태 (실측, 학생 구현)' }),
+    coreHeading('② 내 PC 상태 (실측, 학생 구현)'),
     makeNode('p', { text: '제공 기능에는 CPU·메모리·디스크 표시가 없어 학생 코드가 직접 읽습니다. 관리자 권한 없이 브라우저가 알려 주는 값만 쓰며, 이 PC에서 버튼을 눌러 잰 실측입니다. 응답 시간은 예제 모드에서는 예제 서버, 연결이 없을 때는 오류 응답까지 걸린 시간입니다. 이 칸에는 예시 값을 쓰지 않습니다.', className: 'muted' }),
     pcStateList(measure.running ? null : measure.pc),
   );
-  const button = makeNode('button', { text: measure.running ? '측정 중' : '내 PC 상태 측정', className: 'btn', attrs: { type: 'button', 'data-measure-button': '' } });
+  // 첫 조회 뒤에는 「다시 조회」. 조회 중에는 버튼을 잠그고 대기 표시를 보여 준다. 자동으로 다시 조회하지 않는다.
+  const button = makeNode('button', { text: measure.running ? '조회 중' : (measure.history.length > 0 ? '다시 조회' : '내 PC 상태 측정'), className: 'btn', attrs: { type: 'button', 'data-measure-button': '' } });
   button.disabled = measure.running || !canMeasure;
   button.addEventListener('click', start);
   part.append(button);
-  if (!canMeasure) part.append(makeNode('p', { text: '측정 도구를 받지 못해 측정할 수 없습니다(확인 불가).', className: 'state state-empty' }));
+  if (!canMeasure) part.append(makeNode('p', { text: '측정 도구를 받지 못해 측정할 수 없습니다(확인 불가). 다음에 할 일: 화면을 새로 열고 다시 시도하세요.', className: 'state state-empty' }));
   if (measure.running) {
-    part.append(makeNode('p', { text: `측정 중: ${measure.rows.length}/${MEASURE_PATHS.length}개 완료`, className: 'state state-loading', attrs: { role: 'status' } }));
+    part.append(makeNode('p', { text: `대기 중: 서버 응답을 기다리는 중입니다(${measure.rows.length}/${MEASURE_PATHS.length}개 완료). 끝나면 결과가 바뀝니다.`, className: 'state state-loading', attrs: { role: 'status', 'data-wait': 'measure' } }));
   } else if (measure.rows.length === 0) {
     part.append(makeNode('p', { text: '아직 측정하지 않았습니다. 버튼을 누르면 허용된 조회 주소 5개를 한 번씩 부릅니다. 자동으로 반복하지 않습니다.', className: 'state state-empty' }));
   } else {
@@ -770,6 +795,16 @@ function measurePart(context) {
       list.append(makeNode('li', { text: `실측 · GET ${row.path} · ${row.ok ? '응답 성공' : `응답 실패(${row.code})`} · ${row.ms.toFixed(1)}ms`, attrs: { 'data-ok': String(row.ok) } }));
     }
     part.append(list, makeNode('p', { text: `측정 시각 ${kstTimeText(measure.at)}(한국 시각) · 1회 측정이며 누를 때마다 값이 달라집니다.`, className: 'muted' }));
+    // 실패한 항목은 따로 모아 코드와 다음에 할 일을 보여 준다. 실패를 예시 값이나 이전 값으로 채우지 않는다.
+    const failed = measure.rows.filter((row) => !row.ok);
+    if (failed.length > 0) {
+      const box = makeNode('div', { attrs: { 'data-measure-failures': '', role: 'group', 'aria-label': '실패한 항목' } });
+      box.append(makeNode('h4', { text: `실패한 항목 ${failed.length}개 / ${measure.rows.length}개 (조회 성공이 아니며 예시 값으로 대신하지 않습니다)` }));
+      const items = makeNode('ul');
+      for (const row of failed) items.append(makeNode('li', { text: `GET ${row.path} · 실패 코드 ${row.code} · 다음에 할 일: ${apiNext(row.code)}`, className: 'state state-error', attrs: { 'data-fail-code': row.code } }));
+      box.append(items);
+      part.append(box);
+    }
     part.append(makeNode('h4', { text: `추이 비교 (측정 ${measure.history.length}회, 최대 ${HISTORY_MAX}회 보관)` }));
     if (measure.history.length < 2) {
       part.append(makeNode('p', { text: '비교하려면 한 번 더 측정하세요. 직전 측정이 없어 아직 비교하지 않습니다.', className: 'state state-empty', attrs: { role: 'status' } }));
@@ -881,9 +916,20 @@ function parsePcInfo(text) {
   };
 }
 
+// 읽지 못한 항목마다 붙이는 「다음에 할 일」. 값을 만들어 채우지 않는다.
+const PCINFO_NEXT = {
+  access_denied: '다음에 할 일: 이 앱은 권한을 올리지 않습니다. 꼭 필요하면 Windows 이벤트 뷰어에서 직접 확인하세요.',
+  command_failed: '다음에 할 일: 수집 스크립트를 다시 실행한 뒤 「다시 조회」를 누르세요.',
+  not_supported: '다음에 할 일: 이 PC에서는 읽을 수 없는 항목입니다. 값을 만들지 않습니다.',
+  invalid: '다음에 할 일: 수집 스크립트를 다시 실행해 새 파일을 만든 뒤 「다시 조회」를 누르세요.',
+};
+const PCINFO_RETRY_NEXT = '다음에 할 일: 수집 스크립트를 다시 실행해 새 파일을 만든 뒤 「다시 조회」를 누르고 그 파일을 고르세요. 이전 값은 현재 값으로 보지 않습니다.';
+
 async function loadPcFile(file, pcInfo, onChange) {
   if (!file) return;
   pcInfo.error = null;
+  pcInfo.loading = true;
+  onChange?.();
   if (file.size > PCINFO_MAX_BYTES) pcInfo.error = `파일이 너무 큽니다(${file.size}바이트, 한도 ${PCINFO_MAX_BYTES}바이트). 수집 스크립트가 만든 파일이 맞는지 확인하세요.`;
   else {
     let text = null;
@@ -896,8 +942,9 @@ async function loadPcFile(file, pcInfo, onChange) {
       } else pcInfo.error = parsed.reason;
     }
   }
+  pcInfo.loading = false;
   onChange?.();
-  document.querySelector('[data-pc-file]')?.focus();
+  document.querySelector('[data-pc-retry]')?.focus();
 }
 
 function pcAge(ms) {
@@ -910,8 +957,8 @@ function pcBlock(key, title, unit, section, lines, collectedMs) {
   block.append(makeNode('h4', { text: title }), makeNode('p', { text: `불러온 파일 값(실측) · 잰 시각 ${kstTimeText(new Date(collectedMs).toISOString())}(한국 시각, ${pcAge(collectedMs)}) · 단위 ${unit}`, className: 'muted' }));
   const list = makeNode('ul');
   if (section.status === 'ok') for (const line of lines(section)) list.append(makeNode('li', { text: line }));
-  else if (section.status === 'unavailable') list.append(makeNode('li', { text: `확인 불가 · 이유: ${PCINFO_REASON[section.reason]}`, className: 'state state-empty' }));
-  else list.append(makeNode('li', { text: '확인 불가 · 이유: 파일에서 이 항목의 형식이 맞지 않아 숫자를 만들지 않았습니다.', className: 'state state-empty' }));
+  else if (section.status === 'unavailable') list.append(makeNode('li', { text: `확인 불가 · 이유: ${PCINFO_REASON[section.reason]} · ${PCINFO_NEXT[section.reason]}`, className: 'state state-empty' }));
+  else list.append(makeNode('li', { text: `확인 불가 · 이유: 파일에서 이 항목의 형식이 맞지 않아 숫자를 만들지 않았습니다. · ${PCINFO_NEXT.invalid}`, className: 'state state-empty' }));
   block.append(list);
   return block;
 }
@@ -948,22 +995,34 @@ function pcCompare(prev, cur) {
 
 function pcCheckPart(context) {
   const { pcInfo, onPcFile } = context;
-  const part = makeNode('div', { attrs: { 'data-part': 'pc-check', role: 'region', 'aria-label': '내 PC 점검' } });
+  const part = makeNode('div', { attrs: { 'data-part': 'pc-check', 'data-core': 'pc', role: 'region', 'aria-label': '내 PC 점검', 'aria-busy': String(pcInfo.loading === true) } });
   part.append(
-    makeNode('h3', { text: '내 PC 점검 (읽기 전용, 학생 구현)' }),
+    coreHeading('③ 내 PC 점검 (읽기 전용, 학생 구현)'),
     makeNode('p', { text: '이 칸의 건수는 침해나 공격 탐지 결과가 아닙니다. Windows가 남긴 경고·오류 기록의 개수일 뿐입니다. 방화벽과 보안 설정은 읽기만 하며 바꾸지 않습니다. 관리자 권한이 필요한 항목은 바꾸려 하지 않고 「확인 불가」와 이유로 표시합니다. 이 칸에는 예시 값을 쓰지 않습니다.', className: 'muted', attrs: { 'data-pc-notice': '' } }),
     makeNode('p', { text: '값은 브라우저가 직접 읽은 것이 아니라 읽기 전용 수집 스크립트가 일반 권한으로 읽어 파일에 남긴 값을 사용자가 불러온 것입니다. 실제 주소, MAC, 무선 이름, 컴퓨터 이름은 수집하지 않습니다.', className: 'muted' }),
     makeNode('p', { text: '1) on-client 폴더에서 실행: powershell -NoProfile -ExecutionPolicy Bypass -File .\\student\\collect-pc-info.ps1', className: 'muted' }),
-    makeNode('p', { text: '2) 아래 「PC 점검 파일 선택」에서 %TEMP%\\hth-pc-info.json 을 고릅니다(파일 선택 창 주소칸에 붙여 넣으세요). 파일을 고를 때만 불러오며 자동으로 읽지 않습니다.', className: 'muted' }),
+    makeNode('p', { text: '2) 아래 「PC 점검 파일 불러오기」(두 번째부터는 「다시 조회」) 버튼을 누르고 %TEMP%\\hth-pc-info.json 을 고릅니다(파일 선택 창 주소칸에 붙여 넣으세요). 파일을 고를 때만 불러오며 자동으로 읽지 않습니다.', className: 'muted' }),
   );
+  // 파일 입력은 화면에 보이지 않게 두고, 키보드로 누를 수 있는 버튼 하나로 연다. 브라우저는 OS를 직접 읽을 수 없으므로
+  // 「다시 조회」는 수집 스크립트를 다시 실행한 뒤 새 파일을 다시 고르는 동작이다.
   const fileId = `student-pc-file-${++pcFileSeq}`;
-  const input = makeNode('input', { attrs: { type: 'file', id: fileId, accept: '.json,application/json', 'data-pc-file': '' } });
+  const input = makeNode('input', { attrs: { type: 'file', id: fileId, accept: '.json,application/json', 'aria-label': 'PC 점검 파일', 'data-pc-file': '' } });
+  input.hidden = true;
   input.addEventListener('change', () => onPcFile(input.files?.[0]));
-  part.append(makeNode('label', { text: 'PC 점검 파일 선택 ', attrs: { for: fileId } }), input);
-  if (pcInfo.error) part.append(makeNode('p', { text: `불러오지 못했습니다(확인 불가): ${pcInfo.error}`, className: 'state state-error', attrs: { role: 'status', 'data-pc-error': '' } }));
+  const retry = makeNode('button', { text: pcInfo.loading ? '조회 중' : (pcInfo.history.length > 0 ? '다시 조회(파일 다시 고르기)' : 'PC 점검 파일 불러오기'), className: 'btn', attrs: { type: 'button', 'data-pc-retry': '', 'aria-controls': fileId } });
+  retry.disabled = pcInfo.loading === true;
+  retry.addEventListener('click', () => input.click());
+  part.append(retry, input);
+  if (pcInfo.loading) part.append(makeNode('p', { text: '대기 중: 고른 파일을 읽고 확인하는 중입니다. 끝나면 결과가 바뀝니다.', className: 'state state-loading', attrs: { role: 'status', 'data-wait': 'pc' } }));
+  if (pcInfo.error) {
+    part.append(
+      makeNode('p', { text: `불러오지 못했습니다(확인 불가): ${pcInfo.error}`, className: 'state state-error', attrs: { role: 'status', 'data-pc-error': '' } }),
+      makeNode('p', { text: PCINFO_RETRY_NEXT, className: 'muted', attrs: { 'data-pc-next': '' } }),
+    );
+  }
   const cur = pcInfo.history.at(-1);
   if (!cur) {
-    part.append(makeNode('p', { text: 'PC 점검 파일을 아직 불러오지 않았습니다(확인 불가). 값을 만들어 보여 주지 않습니다.', className: 'state state-empty', attrs: { role: 'status' } }));
+    part.append(makeNode('p', { text: 'PC 점검 파일을 아직 불러오지 않았습니다(확인 불가). 값을 만들어 보여 주지 않습니다. 다음에 할 일: 위 1)의 명령을 실행한 뒤 「PC 점검 파일 불러오기」를 누르세요.', className: 'state state-empty', attrs: { role: 'status' } }));
     return part;
   }
   part.append(
@@ -983,11 +1042,11 @@ function pcCheckPart(context) {
     const entry = cur.eventLogs.status === 'ok' ? cur.eventLogs.logs[name] : { status: 'invalid' };
     let text;
     if (entry.status === 'ok') text = `${name}: 오류 ${entry.errors}건 · 경고 ${entry.warnings}건${entry.truncated ? ' (세는 상한 10000건에서 멈춤)' : ''}`;
-    else if (entry.status === 'unavailable') text = `${name}: 확인 불가 · 이유: ${PCINFO_REASON[entry.reason]}`;
-    else text = `${name}: 확인 불가 · 이유: 파일에서 이 항목의 형식이 맞지 않아 숫자를 만들지 않았습니다.`;
+    else if (entry.status === 'unavailable') text = `${name}: 확인 불가 · 이유: ${PCINFO_REASON[entry.reason]} · ${PCINFO_NEXT[entry.reason]}`;
+    else text = `${name}: 확인 불가 · 이유: 파일에서 이 항목의 형식이 맞지 않아 숫자를 만들지 않았습니다. · ${PCINFO_NEXT.invalid}`;
     logList.append(makeNode('li', { text, attrs: { 'data-pc-log': name, 'data-status': entry.status } }));
   }
-  logList.append(makeNode('li', { text: 'Security: 확인 불가 · 이유: 관리자 권한이 필요해 읽지 않습니다(바꾸려 하지 않음).', attrs: { 'data-pc-log': 'Security', 'data-status': 'unavailable' } }));
+  logList.append(makeNode('li', { text: `Security: 확인 불가 · 이유: 관리자 권한이 필요해 읽지 않습니다(바꾸려 하지 않음). · ${PCINFO_NEXT.access_denied}`, attrs: { 'data-pc-log': 'Security', 'data-status': 'unavailable' } }));
   logs.append(logList);
   part.append(logs, makeNode('h4', { text: `PC 점검 비교 (불러온 파일 ${pcInfo.history.length}개, 최대 ${PCINFO_HISTORY_MAX}개 보관)` }));
   if (pcInfo.history.length < 2) {
@@ -998,11 +1057,29 @@ function pcCheckPart(context) {
   return part;
 }
 
+// 핵심 3가지 바로가기: 버튼을 누르면 해당 섹션 제목으로 초점과 화면을 옮긴다(Tab, Enter, Space로 조작).
+const CORE_SECTIONS = [['cards', '① 상태 카드와 SDP'], ['measure', '② 내 PC 상태'], ['pc', '③ 내 PC 점검']];
+
+function coreNav(root, withPc) {
+  const nav = makeNode('nav', { attrs: { 'aria-label': '핵심 3가지 바로가기', 'data-core-nav': '' } });
+  nav.append(makeNode('span', { text: '핵심 3가지 바로가기: ' }));
+  for (const [key, label] of CORE_SECTIONS.filter(([key]) => withPc || key === 'cards')) {
+    const button = makeNode('button', { text: label, className: 'btn', attrs: { type: 'button', 'data-core-jump': key } });
+    button.addEventListener('click', () => {
+      const target = root.querySelector(`[data-core="${key}"] [data-core-heading]`);
+      target?.scrollIntoView?.({ block: 'start' });
+      target?.focus();
+    });
+    nav.append(button);
+  }
+  return nav;
+}
+
 function statusView(input, measureContext) {
   const root = makeNode('section', { attrs: { 'data-testid': 'student-status-view', 'aria-label': '기기·세션·알림·진단 정보 상태' } });
   const note = modeNote(input);
   if (note) root.append(note);
-  root.append(dashboardCards(input), sdpPart(input));
+  root.append(coreNav(root, Boolean(measureContext)), dashboardCards(input), sdpPart(input));
   if (measureContext) root.append(measurePart(measureContext));
   if (measureContext?.pcInfo) root.append(pcCheckPart(measureContext));
   root.append(
@@ -1507,7 +1584,7 @@ function vulnerabilitiesView(input) {
 export function createStudentView({ api, onChange } = {}) {
   const eventFilters = { kind: 'all', app: 'all', access: 'all' };
   const measure = { running: false, rows: [], at: null, pc: null, history: [] };
-  const pcInfo = { history: [], error: null };
+  const pcInfo = { history: [], error: null, loading: false };
   const measureContext = { measure, canMeasure: typeof api?.get === 'function', start: () => runMeasure(api, measure, onChange), pcInfo, onPcFile: (file) => loadPcFile(file, pcInfo, onChange) };
   return {
     renderIdentity(input) { return renderIdentityView(input); },
