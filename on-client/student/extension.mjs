@@ -783,12 +783,228 @@ function measurePart(context) {
   return part;
 }
 
+// ---- SDP 연결 상태: 회사 시스템(SDP) 연결 여부만 따로 보여 준다. 아래 PC 점검 결과와 섞지 않는다 ----
+function sdpState(input) {
+  const parts = [input?.devices, input?.sessions].filter((resource) => resource && typeof resource === 'object');
+  if (input?.mode === 'demo' || parts.some((resource) => resource.mode === 'demo')) {
+    return { kind: 'example', label: '예제 자료(SDP 아님)', detail: '예제 모드입니다. 실제 SDP 서버에 연결된 것이 아니며 이 값은 예시 값입니다.' };
+  }
+  if (parts.some((resource) => resource.status === 'ok')) return { kind: 'connected', label: 'SDP 연결됨', detail: '서버가 SDP 쪽 자료를 응답했습니다.' };
+  if (parts.length > 0 && parts.every((resource) => resource.status === 'loading')) return { kind: 'loading', label: '확인 중', detail: 'SDP 연결 여부를 확인하고 있습니다.' };
+  if (parts.some((resource) => resource.mode === 'disconnected' || resource.error?.code === 'ENGINE_NOT_CONNECTED')) {
+    return { kind: 'disconnected', label: 'SDP 미연결', detail: 'SDP 연결 설정이 없어 서버가 「연결 없음」으로 응답했습니다(ENGINE_NOT_CONNECTED). PC 점검이 성공해도 SDP가 연결된 것이 아닙니다.' };
+  }
+  return { kind: 'unknown', label: '확인 불가', detail: 'SDP 연결 여부를 확인할 수 없습니다. 연결된 것으로 보지 않습니다.' };
+}
+
+function sdpPart(input) {
+  const state = sdpState(input);
+  const part = makeNode('div', { className: 'card', attrs: { 'data-part': 'sdp-status', 'data-sdp': state.kind } });
+  part.append(
+    makeNode('h3', { text: 'SDP 연결 상태(회사 시스템)' }),
+    makeNode('p', { text: state.label, className: state.kind === 'example' ? 'tag tag-demo' : 'tag' }),
+    makeNode('p', { text: state.detail, className: 'muted' }),
+  );
+  return part;
+}
+
+// ---- 내 PC 점검: 네트워크 구성·방화벽·Windows 기록 건수 ----
+// 브라우저는 이 값들을 읽을 수 없다. student/collect-pc-info.ps1(읽기 전용, 일반 권한)이 남긴 파일을 사용자가 직접 골라 불러온다.
+// 화면은 파일 내용을 검증해 보여 줄 뿐 OS를 읽거나 설정을 바꾸지 않는다. 건수는 침해·공격 탐지 결과가 아니다.
+// 형식이 맞지 않는 항목은 숫자를 만들지 않고 「확인 불가」로 둔다. 이 칸에는 예시 값을 쓰지 않는다.
+const PCINFO_SCHEMA = 'hth.pcinfo.v1';
+const PCINFO_MAX_BYTES = 100000;
+const PCINFO_HISTORY_MAX = 10;
+const PCINFO_STALE_MIN = 60;
+const PCINFO_REASON = {
+  access_denied: '관리자 권한이 필요해 읽지 않았습니다. 권한을 올리거나 설정을 바꾸려 하지 않았습니다.',
+  command_failed: '읽기 명령이 실패해 읽지 못했습니다.',
+  not_supported: '이 PC에서 지원하지 않는 항목입니다.',
+};
+const FIREWALL_NAME_TEXT = { Domain: '도메인', Private: '개인', Public: '공용' };
+const FIREWALL_INBOUND = ['Block', 'Allow', 'NotConfigured'];
+const PCINFO_LOGS = ['System', 'Application'];
+let pcFileSeq = 0;
+const countOf = (value, max = 1000000) => Number.isSafeInteger(value) && value >= 0 && value <= max;
+
+// 항목 하나를 검증한다. 이상이 있으면 그 항목만 invalid로 두고 다른 항목은 살린다.
+function pcSection(raw, build) {
+  if (raw === null || typeof raw !== 'object') return { status: 'invalid' };
+  if (raw.status === 'unavailable') return Object.hasOwn(PCINFO_REASON, raw.reason) ? { status: 'unavailable', reason: raw.reason } : { status: 'invalid' };
+  if (raw.status !== 'ok') return { status: 'invalid' };
+  try { return build(raw) ?? { status: 'invalid' }; } catch { return { status: 'invalid' }; }
+}
+
+function pcNetwork(raw) {
+  return pcSection(raw, (r) => {
+    const a = r.adapters;
+    if (!a || ![a.total, a.up, a.wired, a.wireless, a.other, r.ipv4Configured, r.gatewayConfigured, r.dnsConfigured].every((v) => countOf(v, 1000))) return null;
+    return { status: 'ok', adapters: { total: a.total, up: a.up, wired: a.wired, wireless: a.wireless, other: a.other }, ipv4: r.ipv4Configured, gateway: r.gatewayConfigured, dns: r.dnsConfigured };
+  });
+}
+
+function pcFirewall(raw) {
+  return pcSection(raw, (r) => {
+    if (!Array.isArray(r.profiles) || r.profiles.length === 0 || r.profiles.length > 3) return null;
+    const names = new Set();
+    const profiles = [];
+    for (const p of r.profiles) {
+      if (!Object.hasOwn(FIREWALL_NAME_TEXT, p?.name) || names.has(p.name) || typeof p.enabled !== 'boolean' || !FIREWALL_INBOUND.includes(p.defaultInbound)) return null;
+      names.add(p.name);
+      profiles.push({ name: p.name, enabled: p.enabled, defaultInbound: p.defaultInbound });
+    }
+    return { status: 'ok', profiles };
+  });
+}
+
+function pcEventLogs(raw, windowHours) {
+  if (raw === null || typeof raw !== 'object' || !Array.isArray(raw.logs) || raw.windowHours !== windowHours) return { status: 'invalid' };
+  const logs = {};
+  for (const name of PCINFO_LOGS) {
+    const entry = raw.logs.find((item) => item?.log === name);
+    logs[name] = pcSection(entry, (e) => (countOf(e.errors, 10000) && countOf(e.warnings, 10000) ? { status: 'ok', errors: e.errors, warnings: e.warnings, truncated: e.truncated === true } : null));
+  }
+  return { status: 'ok', logs };
+}
+
+function parsePcInfo(text) {
+  let raw;
+  try { raw = JSON.parse(text); } catch { return { ok: false, reason: 'JSON 형식이 아닙니다.' }; }
+  if (raw === null || typeof raw !== 'object' || raw.schema !== PCINFO_SCHEMA) return { ok: false, reason: `schema가 ${PCINFO_SCHEMA}이 아닙니다. 수집 스크립트가 만든 파일을 고르세요.` };
+  const ms = typeof raw.collectedAt === 'string' ? Date.parse(raw.collectedAt) : Number.NaN;
+  if (!Number.isFinite(ms)) return { ok: false, reason: '잰 시각(collectedAt)을 읽을 수 없습니다.' };
+  if (ms > Date.now() + 5 * 60000) return { ok: false, reason: '잰 시각이 지금보다 미래입니다. PC 시계나 파일을 확인하세요.' };
+  if (!Number.isSafeInteger(raw.windowHours) || raw.windowHours < 1 || raw.windowHours > 168) return { ok: false, reason: '기록 확인 기간(windowHours)이 올바르지 않습니다.' };
+  return {
+    ok: true,
+    data: { collectedMs: ms, loadedAt: new Date().toISOString(), windowHours: raw.windowHours, network: pcNetwork(raw.network), firewall: pcFirewall(raw.firewall), eventLogs: pcEventLogs(raw.eventLogs, raw.windowHours) },
+  };
+}
+
+async function loadPcFile(file, pcInfo, onChange) {
+  if (!file) return;
+  pcInfo.error = null;
+  if (file.size > PCINFO_MAX_BYTES) pcInfo.error = `파일이 너무 큽니다(${file.size}바이트, 한도 ${PCINFO_MAX_BYTES}바이트). 수집 스크립트가 만든 파일이 맞는지 확인하세요.`;
+  else {
+    let text = null;
+    try { text = await file.text(); } catch { pcInfo.error = '파일을 읽지 못했습니다.'; }
+    if (text !== null) {
+      const parsed = parsePcInfo(text);
+      if (parsed.ok) {
+        pcInfo.history.push(parsed.data);
+        if (pcInfo.history.length > PCINFO_HISTORY_MAX) pcInfo.history.shift();
+      } else pcInfo.error = parsed.reason;
+    }
+  }
+  onChange?.();
+  document.querySelector('[data-pc-file]')?.focus();
+}
+
+function pcAge(ms) {
+  const minutes = Math.max(0, Math.round((Date.now() - ms) / 60000));
+  return minutes > PCINFO_STALE_MIN ? `주의 · 오래된 값, ${minutes}분 전` : `${minutes}분 전`;
+}
+
+function pcBlock(key, title, unit, section, lines, collectedMs) {
+  const block = makeNode('div', { attrs: { 'data-pc-block': key, 'data-status': section.status } });
+  block.append(makeNode('h4', { text: title }), makeNode('p', { text: `불러온 파일 값(실측) · 잰 시각 ${kstTimeText(new Date(collectedMs).toISOString())}(한국 시각, ${pcAge(collectedMs)}) · 단위 ${unit}`, className: 'muted' }));
+  const list = makeNode('ul');
+  if (section.status === 'ok') for (const line of lines(section)) list.append(makeNode('li', { text: line }));
+  else if (section.status === 'unavailable') list.append(makeNode('li', { text: `확인 불가 · 이유: ${PCINFO_REASON[section.reason]}`, className: 'state state-empty' }));
+  else list.append(makeNode('li', { text: '확인 불가 · 이유: 파일에서 이 항목의 형식이 맞지 않아 숫자를 만들지 않았습니다.', className: 'state state-empty' }));
+  block.append(list);
+  return block;
+}
+
+function pcCompare(prev, cur) {
+  const logCount = (name, field) => (entry) => (entry.eventLogs.status === 'ok' && entry.eventLogs.logs[name].status === 'ok' ? entry.eventLogs.logs[name][field] : null);
+  const items = [
+    ['System 오류', '건', logCount('System', 'errors')],
+    ['System 경고', '건', logCount('System', 'warnings')],
+    ['Application 오류', '건', logCount('Application', 'errors')],
+    ['Application 경고', '건', logCount('Application', 'warnings')],
+    ['연결된 어댑터', '개', (entry) => (entry.network.status === 'ok' ? entry.network.adapters.up : null)],
+    ['켜진 방화벽 프로필', '개', (entry) => (entry.firewall.status === 'ok' ? entry.firewall.profiles.filter((p) => p.enabled).length : null)],
+  ];
+  const sameWindow = prev.windowHours === cur.windowHours;
+  const table = makeNode('table', { attrs: { 'aria-label': '직전 PC 점검과 지금 PC 점검 비교' } });
+  const head = makeNode('thead');
+  const headRow = makeNode('tr');
+  for (const title of ['항목', `직전(${kstClock(new Date(prev.collectedMs).toISOString())})`, `지금(${kstClock(new Date(cur.collectedMs).toISOString())})`, '차이', '단위']) headRow.append(makeNode('th', { text: title, attrs: { scope: 'col' } }));
+  head.append(headRow);
+  const body = makeNode('tbody');
+  for (const [label, unit, read] of items) {
+    const before = read(prev);
+    const now = read(cur);
+    let diff = '비교 불가';
+    if (sameWindow && before !== null && now !== null) diff = now === before ? '변화 없음' : `${Math.abs(now - before)} ${now > before ? '증가' : '감소'}`;
+    const row = makeNode('tr', { attrs: { 'data-pc-compare': label } });
+    for (const cell of [label, before === null ? '확인 불가' : before, now === null ? '확인 불가' : now, diff, unit]) row.append(makeNode('td', { text: cell }));
+    body.append(row);
+  }
+  table.append(head, body);
+  return table;
+}
+
+function pcCheckPart(context) {
+  const { pcInfo, onPcFile } = context;
+  const part = makeNode('div', { attrs: { 'data-part': 'pc-check', role: 'region', 'aria-label': '내 PC 점검' } });
+  part.append(
+    makeNode('h3', { text: '내 PC 점검 (읽기 전용, 학생 구현)' }),
+    makeNode('p', { text: '이 칸의 건수는 침해나 공격 탐지 결과가 아닙니다. Windows가 남긴 경고·오류 기록의 개수일 뿐입니다. 방화벽과 보안 설정은 읽기만 하며 바꾸지 않습니다. 관리자 권한이 필요한 항목은 바꾸려 하지 않고 「확인 불가」와 이유로 표시합니다. 이 칸에는 예시 값을 쓰지 않습니다.', className: 'muted', attrs: { 'data-pc-notice': '' } }),
+    makeNode('p', { text: '값은 브라우저가 직접 읽은 것이 아니라 읽기 전용 수집 스크립트가 일반 권한으로 읽어 파일에 남긴 값을 사용자가 불러온 것입니다. 실제 주소, MAC, 무선 이름, 컴퓨터 이름은 수집하지 않습니다.', className: 'muted' }),
+    makeNode('p', { text: '1) on-client 폴더에서 실행: powershell -NoProfile -ExecutionPolicy Bypass -File .\\student\\collect-pc-info.ps1', className: 'muted' }),
+    makeNode('p', { text: '2) 아래 「PC 점검 파일 선택」에서 %TEMP%\\hth-pc-info.json 을 고릅니다(파일 선택 창 주소칸에 붙여 넣으세요). 파일을 고를 때만 불러오며 자동으로 읽지 않습니다.', className: 'muted' }),
+  );
+  const fileId = `student-pc-file-${++pcFileSeq}`;
+  const input = makeNode('input', { attrs: { type: 'file', id: fileId, accept: '.json,application/json', 'data-pc-file': '' } });
+  input.addEventListener('change', () => onPcFile(input.files?.[0]));
+  part.append(makeNode('label', { text: 'PC 점검 파일 선택 ', attrs: { for: fileId } }), input);
+  if (pcInfo.error) part.append(makeNode('p', { text: `불러오지 못했습니다(확인 불가): ${pcInfo.error}`, className: 'state state-error', attrs: { role: 'status', 'data-pc-error': '' } }));
+  const cur = pcInfo.history.at(-1);
+  if (!cur) {
+    part.append(makeNode('p', { text: 'PC 점검 파일을 아직 불러오지 않았습니다(확인 불가). 값을 만들어 보여 주지 않습니다.', className: 'state state-empty', attrs: { role: 'status' } }));
+    return part;
+  }
+  part.append(
+    pcBlock('network', '네트워크 구성(주소 제외)', '개', cur.network, (n) => [
+      `어댑터 ${n.adapters.total}개 중 연결됨 ${n.adapters.up}개 (유선 ${n.adapters.wired}개, 무선 ${n.adapters.wireless}개, 기타 ${n.adapters.other}개)`,
+      `연결된 어댑터 중 IPv4 설정 ${n.ipv4}개 · 기본 게이트웨이 설정 ${n.gateway}개 · DNS 설정 ${n.dns}개`,
+    ], cur.collectedMs),
+    pcBlock('firewall', '방화벽 설정(읽기만 함)', '켜짐·꺼짐', cur.firewall, (f) => [
+      ...f.profiles.map((p) => `${FIREWALL_NAME_TEXT[p.name]} 프로필(${p.name}): ${p.enabled ? '켜짐' : '주의 · 꺼짐'} · 기본 인바운드 동작 ${p.defaultInbound}`),
+      'NotConfigured는 따로 지정하지 않고 Windows 기본 동작을 따른다는 표시입니다.',
+    ], cur.collectedMs),
+  );
+  const logs = makeNode('div', { attrs: { 'data-pc-block': 'events', 'data-status': cur.eventLogs.status } });
+  logs.append(makeNode('h4', { text: `Windows 기록의 경고·오류 건수(최근 ${cur.windowHours}시간)` }), makeNode('p', { text: `불러온 파일 값(실측) · 잰 시각 ${kstTimeText(new Date(cur.collectedMs).toISOString())}(한국 시각, ${pcAge(cur.collectedMs)}) · 단위 건 · 침해나 공격 탐지 결과가 아닙니다`, className: 'muted' }));
+  const logList = makeNode('ul');
+  for (const name of PCINFO_LOGS) {
+    const entry = cur.eventLogs.status === 'ok' ? cur.eventLogs.logs[name] : { status: 'invalid' };
+    let text;
+    if (entry.status === 'ok') text = `${name}: 오류 ${entry.errors}건 · 경고 ${entry.warnings}건${entry.truncated ? ' (세는 상한 10000건에서 멈춤)' : ''}`;
+    else if (entry.status === 'unavailable') text = `${name}: 확인 불가 · 이유: ${PCINFO_REASON[entry.reason]}`;
+    else text = `${name}: 확인 불가 · 이유: 파일에서 이 항목의 형식이 맞지 않아 숫자를 만들지 않았습니다.`;
+    logList.append(makeNode('li', { text, attrs: { 'data-pc-log': name, 'data-status': entry.status } }));
+  }
+  logList.append(makeNode('li', { text: 'Security: 확인 불가 · 이유: 관리자 권한이 필요해 읽지 않습니다(바꾸려 하지 않음).', attrs: { 'data-pc-log': 'Security', 'data-status': 'unavailable' } }));
+  logs.append(logList);
+  part.append(logs, makeNode('h4', { text: `PC 점검 비교 (불러온 파일 ${pcInfo.history.length}개, 최대 ${PCINFO_HISTORY_MAX}개 보관)` }));
+  if (pcInfo.history.length < 2) {
+    part.append(makeNode('p', { text: '비교하려면 수집 스크립트를 다시 실행해 한 번 더 불러오세요. 직전 점검이 없어 아직 비교하지 않습니다.', className: 'state state-empty', attrs: { role: 'status' } }));
+  } else {
+    part.append(pcCompare(pcInfo.history.at(-2), cur), makeNode('p', { text: '비교 기록은 이 화면의 메모리에만 있고 화면을 새로 열면 사라집니다. 건수의 차이는 침해나 공격 여부를 뜻하지 않습니다.', className: 'muted' }));
+  }
+  return part;
+}
+
 function statusView(input, measureContext) {
   const root = makeNode('section', { attrs: { 'data-testid': 'student-status-view', 'aria-label': '기기·세션·알림·진단 정보 상태' } });
   const note = modeNote(input);
   if (note) root.append(note);
-  root.append(dashboardCards(input));
+  root.append(dashboardCards(input), sdpPart(input));
   if (measureContext) root.append(measurePart(measureContext));
+  if (measureContext?.pcInfo) root.append(pcCheckPart(measureContext));
   root.append(
     statusPart('devices', { title: '등록 기기', objectText: '기기 목록을', retryHint: RELOAD_HINT }, input?.devices,
       (data) => statusList(data, '등록된 기기가 없음',
@@ -1291,7 +1507,8 @@ function vulnerabilitiesView(input) {
 export function createStudentView({ api, onChange } = {}) {
   const eventFilters = { kind: 'all', app: 'all', access: 'all' };
   const measure = { running: false, rows: [], at: null, pc: null, history: [] };
-  const measureContext = { measure, canMeasure: typeof api?.get === 'function', start: () => runMeasure(api, measure, onChange) };
+  const pcInfo = { history: [], error: null };
+  const measureContext = { measure, canMeasure: typeof api?.get === 'function', start: () => runMeasure(api, measure, onChange), pcInfo, onPcFile: (file) => loadPcFile(file, pcInfo, onChange) };
   return {
     renderIdentity(input) { return renderIdentityView(input); },
     renderDecision(input) { return decisionView(input); },
