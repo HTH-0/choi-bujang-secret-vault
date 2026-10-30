@@ -1001,7 +1001,7 @@ function pcCheckPart(context) {
     makeNode('p', { text: '이 칸의 건수는 침해나 공격 탐지 결과가 아닙니다. Windows가 남긴 경고·오류 기록의 개수일 뿐입니다. 방화벽과 보안 설정은 읽기만 하며 바꾸지 않습니다. 관리자 권한이 필요한 항목은 바꾸려 하지 않고 「확인 불가」와 이유로 표시합니다. 이 칸에는 예시 값을 쓰지 않습니다.', className: 'muted', attrs: { 'data-pc-notice': '' } }),
     makeNode('p', { text: '값은 브라우저가 직접 읽은 것이 아니라 읽기 전용 수집 스크립트가 일반 권한으로 읽어 파일에 남긴 값을 사용자가 불러온 것입니다. 실제 주소, MAC, 무선 이름, 컴퓨터 이름은 수집하지 않습니다.', className: 'muted' }),
     makeNode('p', { text: '1) on-client 폴더에서 실행: powershell -NoProfile -ExecutionPolicy Bypass -File .\\student\\collect-pc-info.ps1', className: 'muted' }),
-    makeNode('p', { text: '2) 아래 「PC 점검 파일 불러오기」(두 번째부터는 「다시 조회」) 버튼을 누르고 %TEMP%\\hth-pc-info.json 을 고릅니다(파일 선택 창 주소칸에 붙여 넣으세요). 파일을 고를 때만 불러오며 자동으로 읽지 않습니다.', className: 'muted' }),
+    makeNode('p', { text: '2) 아래 「PC 점검 파일 불러오기」(두 번째부터는 「다시 조회」) 버튼을 누르고 %TEMP%\\hth-pc-info.json 을 고릅니다(파일 선택 창 주소칸에 붙여 넣으세요). 폴더가 먼저 나열되어 파일이 안 보이면 아래로 내리거나 「파일 이름」 칸에 hth-pc-info.json 을 입력하세요. 파일을 고를 때만 불러오며 자동으로 읽지 않습니다.', className: 'muted' }),
   );
   // 파일 입력은 화면에 보이지 않게 두고, 키보드로 누를 수 있는 버튼 하나로 연다. 브라우저는 OS를 직접 읽을 수 없으므로
   // 「다시 조회」는 수집 스크립트를 다시 실행한 뒤 새 파일을 다시 고르는 동작이다.
